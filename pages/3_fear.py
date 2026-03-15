@@ -11,25 +11,6 @@ headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 st.set_page_config(page_title="앤트리치 시황판", page_icon="📊", layout="wide")
 
 # ==========================================
-# 🚨 [최종 진화] 암살자 모드 파쇄기 가동! (화면 깜빡임 없이 조용히 지우기)
-# ==========================================
-# 1. 앤트리치 방문증(세션) 발급 확인
-if "passed" not in st.session_state:
-    st.session_state.passed = False
-
-# 2. 주소창에 암호가 있으면 방문증에 '합격' 도장을 찍고, 암호를 조용히 지웁니다.
-if st.query_params.get("from") == "blog":
-    st.session_state.passed = True
-    st.query_params.clear()  # 💡 암호 지우기 끝! (여기에 있던 st.rerun()을 삭제해서 딜레이를 없앴습니다)
-
-# 3. 방문증이 없는 불법 침입자 차단
-if not st.session_state.passed:
-    st.error("🚨 비정상적인 접근입니다!")
-    st.write("이 **[앤트리치 3대 공포/탐욕 지수 현황판]**은 블로그 방문자 전용 프리미엄 기능입니다.")
-    st.write("아래 버튼을 눌러 블로그를 통해 정식으로 접속해 주세요! 🐜")
-    st.link_button("👉 앤트리치 블로그로 이동하기", "https://blog.naver.com/antrich10")
-    st.stop() # 🛑 여기서 프로그램 작동을 완전히 멈춥니다!
-# ==========================================
 
 st.title("📊 앤트리치 3대 공포/탐욕 지수 현황판")
 st.write("투자의 나침반! 현재 시장의 분위기를 한눈에 파악하고 매매 타이밍을 잡으세요.")
