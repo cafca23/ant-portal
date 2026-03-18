@@ -39,8 +39,9 @@ if "market_type" not in st.session_state:
 st.session_state.market_type = st.radio("어느 시장을 스캔할까요?", ["🇺🇸 미국 증시", "🇰🇷 한국 증시"], horizontal=True)
 
 # ==========================================
-# 2. 스캐너 엔진
+# 2. 스캐너 엔진 (AI가 뉴스를 뒤지는 기능)
 # ==========================================
+@st.cache_data(ttl=600, show_spinner=False)
 def run_scanner(market, mover_type="gainers"):
     results = []
     
@@ -59,7 +60,7 @@ def run_scanner(market, mover_type="gainers"):
                 if (mover_type == "gainers" and change_pct >= 10.0) or (mover_type == "losers" and change_pct <= -10.0):
                     results.append({"symbol": symbol, "name": name, "change": change_pct})
         except:
-            return []
+            pass
             
     # 🇰🇷 한국 증시
     else:
@@ -92,9 +93,10 @@ def run_scanner(market, mover_type="gainers"):
     if not results:
         return []
         
+    # 상위 5개만 필터링
     results = sorted(results, key=lambda x: abs(x['change']), reverse=True)[:5]
     
-    # 뉴스 스캔 추가
+    # 각 종목별로 뉴스 스캔
     for stock in results:
         symbol = stock['symbol']
         news_headlines = []
@@ -146,7 +148,7 @@ with col2:
                 st.info("조건에 맞는 종목이 없습니다.")
 
 # ==========================================
-# 4. 💡 [신규] 스캔 결과 확인 및 만화 생성 구역
+# 4. 스캔 결과 확인 및 만화 생성 구역
 # ==========================================
 if st.session_state.scan_results:
     st.divider()
@@ -187,7 +189,7 @@ if st.session_state.scan_results:
 
             🚨 [매우 중요한 작성 규칙 - 만화 대본]
             - 반드시 4컷에서 6컷 사이로 스피디하게 구성하세요.
-            - 만화 대본을 작성할 때, 대사 부분에는 '(개미 1)', '(투자자)' 같은 화자 이름을 절대 적지 말고, 오직 말하는 내용만 큰따옴표 안에 적으세요. 
+            - 만화 대본을 작성할 때, 대사 부분에는 화자 이름을 절대 적지 말고, 오직 말하는 내용만 큰따옴표 안에 적으세요. 
               (❌ 잘못된 예시: 대사: (개미 1) "와, 상한가다!")
               (⭕ 올바른 예시: 대사: "와, 상한가다!")
             """
@@ -197,4 +199,7 @@ if st.session_state.scan_results:
                 st.success("✅ 만화 포스팅 초안이 완성되었습니다! 복사해서 블로그에 올리고 이미지를 뽑아보세요!")
                 with st.container(border=True):
                     st.markdown(response.text)
-            except ResourceEx
+            except ResourceExhausted:
+                st.error("🚨 AI 과부하 상태입니다. 딱 1분만 기다렸다가 다시 눌러주세요!")
+            except Exception as e:
+                st.error(f"🚨 알 수 없는 에러 발생: {e}")
