@@ -25,27 +25,17 @@ st.title("🎢 데일리 급등락 스캐너 & 만화 공장")
 st.write("10% 이상 움직인 종목을 스캔하고, 클릭 한 번으로 '데일리 4~6컷 만화 포스팅'을 구워냅니다.")
 st.divider()
 
-# ==========================================
-# 세션 상태 초기화 (데이터 저장용)
-# ==========================================
 if "scan_results" not in st.session_state:
     st.session_state.scan_results = []
 if "market_type" not in st.session_state:
     st.session_state.market_type = "🇺🇸 미국 증시"
 
-# ==========================================
-# 1. 시장 선택 옵션
-# ==========================================
 st.session_state.market_type = st.radio("어느 시장을 스캔할까요?", ["🇺🇸 미국 증시", "🇰🇷 한국 증시"], horizontal=True)
 
-# ==========================================
-# 2. 스캐너 엔진 (AI가 뉴스를 뒤지는 기능)
-# ==========================================
 @st.cache_data(ttl=600, show_spinner=False)
 def run_scanner(market, mover_type="gainers"):
     results = []
     
-    # 🇺🇸 미국 증시
     if "미국" in market:
         url = f"https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&lang=en-US&region=US&scrIds=day_{mover_type}&count=30"
         try:
@@ -62,7 +52,6 @@ def run_scanner(market, mover_type="gainers"):
         except:
             pass
             
-    # 🇰🇷 한국 증시
     else:
         page_type = "rise" if mover_type == "gainers" else "fall"
         urls = [
@@ -93,10 +82,8 @@ def run_scanner(market, mover_type="gainers"):
     if not results:
         return []
         
-    # 상위 5개만 필터링
     results = sorted(results, key=lambda x: abs(x['change']), reverse=True)[:5]
     
-    # 각 종목별로 뉴스 스캔
     for stock in results:
         symbol = stock['symbol']
         news_headlines = []
@@ -130,9 +117,6 @@ def run_scanner(market, mover_type="gainers"):
         
     return results
 
-# ==========================================
-# 3. 스캔 버튼 영역
-# ==========================================
 col1, col2 = st.columns(2)
 with col1:
     if st.button("🚀 10% 이상 폭등주 스캔", use_container_width=True):
@@ -147,14 +131,10 @@ with col2:
             if not st.session_state.scan_results:
                 st.info("조건에 맞는 종목이 없습니다.")
 
-# ==========================================
-# 4. 스캔 결과 확인 및 만화 생성 구역
-# ==========================================
 if st.session_state.scan_results:
     st.divider()
-    st.subheader("🎯 스캔 완료! 어떤 종목을 만화로 만들까요?")
+    st.subheader("🎯 스캔 완료! 어떤 종목을 휴먼 모드로 만들까요?")
     
-    # 선택지 만들기
     options = {}
     for item in st.session_state.scan_results:
         label = f"{item['name']} ({item['symbol']}) / 변동: {item['change']:+.2f}%"
@@ -163,40 +143,46 @@ if st.session_state.scan_results:
     selected_label = st.selectbox("종목을 선택하세요:", list(options.keys()))
     selected_stock = options[selected_label]
     
-    # 선택된 종목의 뉴스 미리보기
     with st.expander(f"📰 {selected_stock['name']} 관련 수집된 뉴스 보기"):
         st.write(selected_stock['news'])
 
-    if st.button("✍️ 이 종목으로 [데일리 4~6컷 만화] 포스팅 굽기", type="primary", use_container_width=True):
-        with st.spinner(f"[{selected_stock['name']}]의 뉴스를 분석하여 만화 대본을 작성 중입니다... 👨‍🎨"):
+    if st.button("✍️ 사람 냄새 나는 [데일리 만화 포스팅] 굽기", type="primary", use_container_width=True):
+        with st.spinner(f"[{selected_stock['name']}] 휴먼 모드 작가 빙의 중입니다... 👨‍💻"):
             
+            # 💡 [핵심] 휴먼 블로거 페르소나를 완벽하게 주입한 강력한 프롬프트!
             prompt = f"""
-            당신은 '앤트리치' 주식 블로그의 수석 작가입니다.
-            선택된 종목 [{selected_stock['name']} ({selected_stock['symbol']})]이 오늘 {selected_stock['change']:+.2f}% 변동했습니다.
-            다음은 관련된 수집 뉴스입니다:
-            {selected_stock['news']}
+            당신은 AI가 아닙니다. 당신은 주식 커뮤니티에서 활동하며 2026년까지 자산 1억 달성을 목표로 치열하게 시장과 씨름하는 '앤트리치' 블로그의 실제 주인입니다.
+            절대 기계나 AI가 쓴 글처럼 보이지 않도록, 커피 한 잔 마시며 친한 주식 투자 동료에게 썰을 풀듯 아주 자연스럽고 맛깔나는 문장으로 포스팅을 작성해 주세요.
             
-            이 내용을 바탕으로 블로그의 '데일리 급등락 뉴스' 카테고리에 올릴 완벽한 포스팅 초안을 작성해 주세요.
+            [오늘의 주제 종목]
+            - 종목명: {selected_stock['name']} ({selected_stock['symbol']})
+            - 변동률: 오늘 하루만 {selected_stock['change']:+.2f}% 움직임
+            - 뉴스 팩트: {selected_stock['news']}
             
             [출력 필수 구성]
-            1. [블로그 제목 추천]: 클릭을 유도하는 매력적인 제목 3가지
-            2. [오늘의 핫이슈 3줄 요약]: 주가 변동의 핵심 이유
-            3. [데일리 4~6컷 만화 대본]: 개미 캐릭터가 등장하는 시황 만화 대본
-            4. [앤트리치 인사이트]: 이 종목에 대한 향후 전망이나 투자 시 주의점
-            5. [블로그용 해시태그]: 관련된 해시태그 10개 (쉼표로 구분)
-            6. [🎨 제미나이 복사/붙여넣기용 이미지 생성 명령어]: 포스팅 맨 마지막에 아래 텍스트를 정확하게 출력할 것.
+            1. [블로그 제목]: 검색 유입과 호기심을 동시에 잡는 인간적인 어그로 제목 3가지 추천
+            
+            2. [블로그 본문 (인사말 + 핫이슈 분석 + 앤트리치 인사이트)]: 
+               - 기계적인 요약표나 넘버링(1번, 2번 등)을 쓰지 말고, 자연스러운 문장 형태(단락)로 줄글을 써주세요.
+               - 도입부는 "오늘 OO 주주분들 잠 못 이루시겠네요~" 또는 "장 보다가 깜짝 놀랐습니다" 같이 사람 냄새 나게 시작하세요.
+               - 주가가 왜 미친 듯이 움직였는지 뉴스를 바탕으로 재미있게 썰을 풀어주세요.
+               - 마지막에는 2026년 경제적 자유를 향해 달려가는 앤트리치 관점에서의 대응 전략(추격매수 조심, 관망 등)을 공감 가도록 적어주세요.
+               
+            3. [데일리 4~6컷 만화 대본]: 개미 캐릭터가 등장하는 스피디한 시황 만화 대본 (대사에 화자 이름 절대 금지, 큰따옴표 안의 대사만 작성할 것)
+            
+            4. [블로그용 해시태그]: 관련된 해시태그 10개 (쉼표로 구분)
+            
+            5. [🎨 제미나이 복사/붙여넣기용 이미지 생성 명령어]: 맨 마지막에 아래 텍스트를 정확하게 출력할 것.
                "위 만화 대본을 바탕으로 이미지 4~6장을 생성해 줘. 합치지 말고 무조건 1컷당 1개의 이미지 파일로 분리해서 생성해 줘. 이미지 안에는 대사가 말풍선 텍스트로 꼭 들어가야 해."
 
-            🚨 [매우 중요한 작성 규칙 - 만화 대본]
-            - 반드시 4컷에서 6컷 사이로 스피디하게 구성하세요.
-            - 만화 대본을 작성할 때, 대사 부분에는 화자 이름을 절대 적지 말고, 오직 말하는 내용만 큰따옴표 안에 적으세요. 
-              (❌ 잘못된 예시: 대사: (개미 1) "와, 상한가다!")
-              (⭕ 올바른 예시: 대사: "와, 상한가다!")
+            🚨 [절대 금지어 (AI 냄새 나는 단어들)]
+            - "요약하자면", "결론적으로", "이 글에서는", "주의가 필요합니다", "살펴보겠습니다", "기대됩니다" 등 전형적인 AI 문구 절대 사용 금지!
+            - 대신 "난리 났네요", "대박입니다", "물리신 분들 힘내시길", "슈팅이 나왔네요", "줍줍" 같은 한국 주식 커뮤니티의 은어를 문맥에 맞게 아주 살짝만 섞어주세요.
             """
             
             try:
                 response = model.generate_content(prompt)
-                st.success("✅ 만화 포스팅 초안이 완성되었습니다! 복사해서 블로그에 올리고 이미지를 뽑아보세요!")
+                st.success("✅ 진짜 사람이 쓴 것 같은 블로그 포스팅 초안이 완성되었습니다!")
                 with st.container(border=True):
                     st.markdown(response.text)
             except ResourceExhausted:
