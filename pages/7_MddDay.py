@@ -4,9 +4,26 @@ import pandas as pd
 import numpy as np
 
 # ==========================================
-# 0. 페이지 세팅
+# 0. 페이지 세팅 및 도우미 함수
 # ==========================================
 st.set_page_config(page_title="앤트리치 MDD 회복일 계산기", page_icon="🛡️", layout="wide")
+
+# 💡 [신규] 일수를 'X년 Y개월'로 직관적으로 바꿔주는 함수
+def format_days_to_ym(days):
+    if pd.isna(days) or days == 0:
+        return "0일"
+    days = int(days)
+    years = days // 365
+    months = (days % 365) // 30
+    
+    if years > 0 and months > 0:
+        return f"{days}일 ({years}년 {months}개월)"
+    elif years > 0 and months == 0:
+        return f"{days}일 ({years}년)"
+    elif years == 0 and months > 0:
+        return f"{days}일 ({months}개월)"
+    else:
+        return f"{days}일"
 
 st.title("🛡️ 앤트리치 MDD & 퀀트 분할매수 계산기")
 st.write("과거 데이터를 분석하여 하락장 평균 회복 기간을 구하고, 잃지 않는 분할 매수 타점을 시각화합니다.")
@@ -28,7 +45,6 @@ with st.sidebar:
 # ==========================================
 if ticker:
     with st.spinner(f"'{ticker}' 주가 데이터 탐색 및 퀀트 분석 중... 🕵️‍♂️"):
-        # 전체 기간(max)으로 데이터 다운로드 고정
         data = yf.download(ticker, period="max", progress=False)
         
         if data.empty:
@@ -40,7 +56,7 @@ if ticker:
             df = data[['Close']].copy()
             df = df.dropna()
             
-            # 최고가 및 MDD 계산 (오직 역사적 최고점 기준)
+            # 최고가 및 MDD 계산
             df['Peak'] = df['Close'].cummax()
             df['Drawdown'] = (df['Close'] - df['Peak']) / df['Peak']
             
@@ -78,9 +94,10 @@ if ticker:
             # ==========================================
             col1, col2, col3, col4 = st.columns(4)
             col1.metric(label="현재가", value=f"${current_price:.2f}")
-            col2.metric(label="전고점 대비 하락률 (MDD)", value=f"{current_dd_pct:.2f}%", delta=f"전고점({last_peak.strftime('%y.%m.%d')}) 이후 {current_duration}일째", delta_color="inverse")
+            col2.metric(label="전고점 대비 하락률 (MDD)", value=f"{current_dd_pct:.2f}%", delta=f"전고점({last_peak.strftime('%y.%m.%d')}) 이후 {format_days_to_ym(current_duration)}째", delta_color="inverse")
             col3.metric(label="역대 최악의 폭락 (MAX MDD)", value=f"{overall_max_mdd:.2f}%")
-            col4.metric(label="역대 최장 회복기간", value=f"{overall_max_days}일")
+            # 💡 [업데이트] 상단 최장 회복기간에도 년/개월 포맷 적용
+            col4.metric(label="역대 최장 회복기간", value=format_days_to_ym(overall_max_days))
             
             st.divider()
             
@@ -171,10 +188,11 @@ if ticker:
                     
                     c1, c2, c3 = st.columns(3)
                     c1.metric(label=f"조건 부합 횟수", value=f"{len(target_periods)}회")
-                    c2.metric(label=f"평균 회복일", value=f"{avg_recovery}일")
-                    c3.metric(label=f"해당 구간 최장 회복일", value=f"{max_recovery_in_target}일")
+                    # 💡 [업데이트] 하단 평균 회복일에도 년/개월 포맷 적용
+                    c2.metric(label=f"평균 회복일", value=format_days_to_ym(avg_recovery))
+                    c3.metric(label=f"해당 구간 최장 회복일", value=format_days_to_ym(max_recovery_in_target))
                     
-                    st.write(f"💡 **앤트리치 퀀트 전략:** 통계상 **{lower_bound}% ~ {upper_bound}%** 사이로 하락했을 때, 전고점 탈환에 평균 **{avg_recovery}일**이 걸렸습니다. 자금 투입 시 이 기간을 염두에 두고 호흡을 조절하세요!")
+                    st.write(f"💡 **앤트리치 퀀트 전략:** 통계상 **{lower_bound}% ~ {upper_bound}%** 사이로 하락했을 때, 전고점 탈환에 평균 **{format_days_to_ym(avg_recovery)}**이 걸렸습니다. 자금 투입 시 이 기간을 염두에 두고 호흡을 조절하세요!")
                 else:
                     st.warning(f"역사상 {lower_bound}% ~ {upper_bound}% 수준의 하락 후 회복된 기록이 없습니다.")
             
