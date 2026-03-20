@@ -136,7 +136,7 @@ if ticker:
                     except: pass
                     return ''
                 
-                st.dataframe(pct_df.style.applymap(highlight_pct, subset=['매수 메리트 (역사적 하위%)']), use_container_width=True, hide_index=True)
+                st.dataframe(pct_df.style.map(highlight_pct, subset=['매수 메리트 (역사적 하위%)']), use_container_width=True, hide_index=True)
 
             st.divider()
 
