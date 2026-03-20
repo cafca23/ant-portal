@@ -2,6 +2,8 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import urllib.request
+import re
 
 # ==========================================
 # 0. 페이지 세팅 및 도우미 함수
@@ -23,6 +25,19 @@ def format_days_to_ym(days):
         return f"{days}일 ({months}개월)"
     else:
         return f"{days}일"
+
+# 💡 [핵심] 네이버 금융에서 한국어 기업명을 정확하게 긁어오는 함수
+def get_kr_company_name(code):
+    try:
+        url = f"https://finance.naver.com/item/main.naver?code={code}"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        html = urllib.request.urlopen(req).read().decode('euc-kr', errors='ignore')
+        match = re.search(r'<title>(.*?)\s:\s네이버', html)
+        if match:
+            return match.group(1)
+    except:
+        pass
+    return code
 
 st.title("🛡️ 앤트리치 MDD & 퀀트 분할매수 계산기")
 st.write("과거 데이터를 분석하여 하락장 평균 회복 기간을 구하고, 잃지 않는 분할 매수 타점을 시각화합니다.")
@@ -61,20 +76,21 @@ if search_input:
             if data.empty:
                 actual_ticker = f"{search_input}.KQ"
                 data = yf.download(actual_ticker, period="max", progress=False)
+            
+            # 한국 주식은 네이버에서 직접 한글 이름을 가져옵니다.
+            company_name = get_kr_company_name(search_input)
+            
         else:
             data = yf.download(actual_ticker, period="max", progress=False)
+            # 미국 주식은 야후 파이낸스에서 영문 이름을 가져옵니다.
+            try:
+                company_name = yf.Ticker(actual_ticker).info.get('shortName', search_input)
+            except:
+                company_name = search_input
         
         if data.empty:
             st.error("데이터를 불러오지 못했습니다. 종목 코드(번호)를 다시 확인해 주세요.")
         else:
-            # 💡 [핵심 업데이트] longName을 먼저 찾고, 없으면 shortName, 그래도 없으면 입력한 숫자로 표기
-            try:
-                ticker_obj = yf.Ticker(actual_ticker)
-                info = ticker_obj.info
-                company_name = info.get('longName') or info.get('shortName') or search_input
-            except:
-                company_name = search_input
-                
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = data.columns.droplevel(1)
                 
@@ -116,8 +132,8 @@ if search_input:
             # ==========================================
             # 3. 메인 대시보드 출력
             # ==========================================
-            # 💡 [업데이트] 요청하신 대로 타이틀을 "기업명 :" 으로 수정
-            st.subheader(f"🏢 기업명 : **{company_name}** ({actual_ticker})")
+            # 💡 [완벽 해결] 괄호 떼고, 딱 떨어지는 이름만 깔끔하게 출력!
+            st.subheader(f"🏢 기업명 : **{company_name}**")
             
             col1, col2, col3, col4 = st.columns(4)
             if currency == "₩":
