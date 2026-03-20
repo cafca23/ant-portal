@@ -96,7 +96,6 @@ if ticker:
             col1.metric(label="현재가", value=f"${current_price:.2f}")
             col2.metric(label="전고점 대비 하락률 (MDD)", value=f"{current_dd_pct:.2f}%", delta=f"전고점({last_peak.strftime('%y.%m.%d')}) 이후 {format_days_to_ym(current_duration)}째", delta_color="inverse")
             col3.metric(label="역대 최악의 폭락 (MAX MDD)", value=f"{overall_max_mdd:.2f}%")
-            # 💡 [업데이트] 상단 최장 회복기간에도 년/개월 포맷 적용
             col4.metric(label="역대 최장 회복기간", value=format_days_to_ym(overall_max_days))
             
             st.divider()
@@ -137,8 +136,20 @@ if ticker:
                         "현재 상태": status
                     })
                 
-                st.dataframe(pd.DataFrame(target_data), use_container_width=True, hide_index=True)
-                st.info(f"💡 현재 일별 최고점(ATH)은 **${current_peak:.2f}** 입니다. 감정을 배제하고 위 타겟 단가가 올 때만 기계적으로 매수하세요.")
+                target_df = pd.DataFrame(target_data)
+                
+                # 💡 [업데이트] 현재가가 목표 단가 이하일 때(도달 시) 해당 행을 형광 초록으로 칠하는 함수
+                def highlight_target_row(row):
+                    try:
+                        val = float(row['진입 타겟 단가'].replace('$', '').replace(',', ''))
+                        if current_price <= val:
+                            return ['background-color: #39ff14; color: black; font-weight: bold;'] * len(row)
+                    except:
+                        pass
+                    return [''] * len(row)
+
+                st.dataframe(target_df.style.apply(highlight_target_row, axis=1), use_container_width=True, hide_index=True)
+                st.info(f"💡 현재 일별 최고점(ATH)은 **${current_peak:.2f}** 입니다. 감정을 배제하고 형광 초록색(도달) 불이 들어왔을 때만 기계적으로 매수하세요.")
 
             with c2:
                 st.markdown("##### 📊 하락 깊이별 매수 메리트 (퍼센타일)")
@@ -188,7 +199,6 @@ if ticker:
                     
                     c1, c2, c3 = st.columns(3)
                     c1.metric(label=f"조건 부합 횟수", value=f"{len(target_periods)}회")
-                    # 💡 [업데이트] 하단 평균 회복일에도 년/개월 포맷 적용
                     c2.metric(label=f"평균 회복일", value=format_days_to_ym(avg_recovery))
                     c3.metric(label=f"해당 구간 최장 회복일", value=format_days_to_ym(max_recovery_in_target))
                     
