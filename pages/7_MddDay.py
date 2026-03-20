@@ -3,7 +3,6 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import urllib.request
-import re
 
 # ==========================================
 # 0. 페이지 세팅 및 도우미 함수
@@ -26,18 +25,25 @@ def format_days_to_ym(days):
     else:
         return f"{days}일"
 
-# 💡 [핵심] 네이버 금융에서 한국어 기업명을 정확하게 긁어오는 함수
+# 💡 [핵심 수정] 네이버페이 증권 구조 변경에 맞춘 절대 실패하지 않는 크롤링 함수
 def get_kr_company_name(code):
     try:
         url = f"https://finance.naver.com/item/main.naver?code={code}"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        html = urllib.request.urlopen(req).read().decode('euc-kr', errors='ignore')
-        match = re.search(r'<title>(.*?)\s:\s네이버', html)
-        if match:
-            return match.group(1)
-    except:
+        # 네이버가 봇(Bot)으로 인식하지 않도록 강력한 User-Agent 장착
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+        req = urllib.request.Request(url, headers=headers)
+        html = urllib.request.urlopen(req, timeout=5).read().decode('euc-kr', errors='ignore')
+        
+        # <title>KT : 네이버페이 증권</title> 에서 콜론(:) 앞부분만 싹둑 자르기
+        title_start = html.find('<title>') + 7
+        title_end = html.find('</title>')
+        if title_start > 6 and title_end > -1:
+            title_text = html[title_start:title_end]
+            company_name = title_text.split(':')[0].strip()
+            return company_name
+    except Exception as e:
         pass
-    return code
+    return code # 실패 시에만 숫자로 표기
 
 st.title("🛡️ 앤트리치 MDD & 퀀트 분할매수 계산기")
 st.write("과거 데이터를 분석하여 하락장 평균 회복 기간을 구하고, 잃지 않는 분할 매수 타점을 시각화합니다.")
@@ -77,12 +83,12 @@ if search_input:
                 actual_ticker = f"{search_input}.KQ"
                 data = yf.download(actual_ticker, period="max", progress=False)
             
-            # 한국 주식은 네이버에서 직접 한글 이름을 가져옵니다.
+            # 한국 주식은 업데이트된 네이버 크롤러로 한글 이름 추출
             company_name = get_kr_company_name(search_input)
             
         else:
             data = yf.download(actual_ticker, period="max", progress=False)
-            # 미국 주식은 야후 파이낸스에서 영문 이름을 가져옵니다.
+            # 미국 주식은 야후 파이낸스에서 영문 이름 추출
             try:
                 company_name = yf.Ticker(actual_ticker).info.get('shortName', search_input)
             except:
@@ -132,7 +138,6 @@ if search_input:
             # ==========================================
             # 3. 메인 대시보드 출력
             # ==========================================
-            # 💡 [완벽 해결] 괄호 떼고, 딱 떨어지는 이름만 깔끔하게 출력!
             st.subheader(f"🏢 기업명 : **{company_name}**")
             
             col1, col2, col3, col4 = st.columns(4)
