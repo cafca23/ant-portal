@@ -35,7 +35,7 @@ with st.sidebar:
     st.header("⚙️ 분석 설정")
     
     # 💡 [신규] 시장 선택 라디오 버튼
-    market = st.radio("🌍 시장 선택", ["미국 주식 (US)", "한국 코스피 (KOSPI)", "한국 코스닥 (KOSDAQ)"])
+    market = st.radio("", ["미국 주식 (US)", "한국 코스피 (KOSPI)", "한국 코스닥 (KOSDAQ)"])
     
     if market == "미국 주식 (US)":
         raw_ticker = st.text_input("종목 코드 (예: INTC, AAPL, QQQ)", value="INTC").upper()
