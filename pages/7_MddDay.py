@@ -25,16 +25,15 @@ def format_days_to_ym(days):
     else:
         return f"{days}일"
 
-# 💡 [핵심 수정] 네이버페이 증권 구조 변경에 맞춘 절대 실패하지 않는 크롤링 함수
+# 💡 [핵심 수정] euc-kr 대신 모든 한글을 지원하는 cp949 인코딩 적용!
 def get_kr_company_name(code):
     try:
         url = f"https://finance.naver.com/item/main.naver?code={code}"
-        # 네이버가 봇(Bot)으로 인식하지 않도록 강력한 User-Agent 장착
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
         req = urllib.request.Request(url, headers=headers)
-        html = urllib.request.urlopen(req, timeout=5).read().decode('euc-kr', errors='ignore')
+        # 🚨 여기서 euc-kr 대신 cp949를 사용하여 글자 꼬임을 원천 차단합니다.
+        html = urllib.request.urlopen(req, timeout=5).read().decode('cp949', errors='ignore')
         
-        # <title>KT : 네이버페이 증권</title> 에서 콜론(:) 앞부분만 싹둑 자르기
         title_start = html.find('<title>') + 7
         title_end = html.find('</title>')
         if title_start > 6 and title_end > -1:
@@ -43,7 +42,7 @@ def get_kr_company_name(code):
             return company_name
     except Exception as e:
         pass
-    return code # 실패 시에만 숫자로 표기
+    return code 
 
 st.title("🛡️ 앤트리치 MDD & 퀀트 분할매수 계산기")
 st.write("과거 데이터를 분석하여 하락장 평균 회복 기간을 구하고, 잃지 않는 분할 매수 타점을 시각화합니다.")
@@ -61,7 +60,7 @@ with st.sidebar:
         search_input = st.text_input("종목 코드 (예: INTC, AAPL, QQQ)", value="INTC").upper()
         currency = "$"
     else:
-        search_input = st.text_input("종목번호 6자리 (예: 삼성전자 005930, KT 030200)", value="005930")
+        search_input = st.text_input("종목번호 6자리 (예: 삼성전자 005930, SK텔레콤 017670)", value="005930")
         currency = "₩"
 
     target_mdd = st.number_input("목표 분석 하락률 (%)", min_value=-90.0, max_value=-5.0, value=-50.0, step=5.0)
@@ -83,12 +82,10 @@ if search_input:
                 actual_ticker = f"{search_input}.KQ"
                 data = yf.download(actual_ticker, period="max", progress=False)
             
-            # 한국 주식은 업데이트된 네이버 크롤러로 한글 이름 추출
             company_name = get_kr_company_name(search_input)
             
         else:
             data = yf.download(actual_ticker, period="max", progress=False)
-            # 미국 주식은 야후 파이낸스에서 영문 이름 추출
             try:
                 company_name = yf.Ticker(actual_ticker).info.get('shortName', search_input)
             except:
@@ -153,7 +150,7 @@ if search_input:
             st.divider()
             
             # ==========================================
-            # 4. 매수 타점 (기준가) & 퍼센타일 표
+            # 4. 매 매수 타점 (기준가) & 퍼센타일 표
             # ==========================================
             st.subheader("🎯 기계적 분할 매수 타점 & 메리트 분석")
             
