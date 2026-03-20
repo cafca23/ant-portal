@@ -40,7 +40,7 @@ with st.sidebar:
         search_input = st.text_input("종목 코드 (예: INTC, AAPL, QQQ)", value="INTC").upper()
         currency = "$"
     else:
-        search_input = st.text_input("종목번호 6자리 (예: 삼성전자 005930, 에코프로 086520)", value="005930")
+        search_input = st.text_input("종목번호 6자리 (예: 삼성전자 005930, KT 030200)", value="005930")
         currency = "₩"
 
     target_mdd = st.number_input("목표 분석 하락률 (%)", min_value=-90.0, max_value=-5.0, value=-50.0, step=5.0)
@@ -54,7 +54,6 @@ with st.sidebar:
 if search_input:
     with st.spinner(f"'{search_input}' 주가 데이터 탐색 및 기업 정보 분석 중... 🕵️‍♂️"):
         
-        # 💡 [핵심] 실제 야후 파이낸스 티커 확정 로직
         actual_ticker = search_input
         if market == "한국 주식 (KR)":
             actual_ticker = f"{search_input}.KS"
@@ -68,10 +67,11 @@ if search_input:
         if data.empty:
             st.error("데이터를 불러오지 못했습니다. 종목 코드(번호)를 다시 확인해 주세요.")
         else:
-            # 💡 [신규] 공식 기업명(shortName) 가져오기
+            # 💡 [핵심 업데이트] longName을 먼저 찾고, 없으면 shortName, 그래도 없으면 입력한 숫자로 표기
             try:
                 ticker_obj = yf.Ticker(actual_ticker)
-                company_name = ticker_obj.info.get('shortName', search_input)
+                info = ticker_obj.info
+                company_name = info.get('longName') or info.get('shortName') or search_input
             except:
                 company_name = search_input
                 
@@ -116,8 +116,8 @@ if search_input:
             # ==========================================
             # 3. 메인 대시보드 출력
             # ==========================================
-            # 💡 [업데이트] 시원하게 보이도록 기업명을 위로 올리고, 메트릭은 4칸으로 원상복구!
-            st.subheader(f"🏢 분석 종목 : **{company_name}** ({actual_ticker})")
+            # 💡 [업데이트] 요청하신 대로 타이틀을 "기업명 :" 으로 수정
+            st.subheader(f"🏢 기업명 : **{company_name}** ({actual_ticker})")
             
             col1, col2, col3, col4 = st.columns(4)
             if currency == "₩":
