@@ -55,7 +55,6 @@ if ticker:
             df = data[['Close']].copy()
             df = df.dropna()
             
-            # 최고가 및 MDD 계산
             df['Peak'] = df['Close'].cummax()
             df['Drawdown'] = (df['Close'] - df['Peak']) / df['Peak']
             
@@ -137,7 +136,6 @@ if ticker:
                 
                 target_df = pd.DataFrame(target_data)
                 
-                # 💡 [핵심 수정] 상태 텍스트에 "진입 타겟" 또는 "진입 시작"이 있을 때만 형광 초록 칠하기
                 def highlight_target_row(row):
                     status_text = row['현재 상태']
                     if "진입 타겟" in status_text or "진입 시작" in status_text:
@@ -182,6 +180,7 @@ if ticker:
             st.subheader(f"⏱️ [{target_mdd}%] 수준 폭락장 평균 회복 기간")
             lower_bound = target_mdd - buffer
             upper_bound = target_mdd + buffer
+            avg_recovery = 0 # 하단 코멘터리를 위한 기본값
             
             if not periods_df.empty:
                 target_periods = periods_df[
@@ -198,10 +197,40 @@ if ticker:
                     c2.metric(label=f"평균 회복일", value=format_days_to_ym(avg_recovery))
                     c3.metric(label=f"해당 구간 최장 회복일", value=format_days_to_ym(max_recovery_in_target))
                     
-                    st.write(f"💡 **앤트리치 퀀트 전략:** 통계상 **{lower_bound}% ~ {upper_bound}%** 사이로 하락했을 때, 전고점 탈환에 평균 **{format_days_to_ym(avg_recovery)}**이 걸렸습니다. 자금 투입 시 이 기간을 염두에 두고 호흡을 조절하세요!")
+                    st.write(f"💡 **앤트리치 퀀트 전략:** 통계상 **{lower_bound}% ~ {upper_bound}%** 사이로 하락했을 때, 전고점 탈환에 평균 **{format_days_to_ym(avg_recovery)}**이 걸렸습니다.")
                 else:
                     st.warning(f"역사상 {lower_bound}% ~ {upper_bound}% 수준의 하락 후 회복된 기록이 없습니다.")
             
+            # ==========================================
+            # 6. [신규] 앤트리치 AI 코멘터리 (인사이트 요약)
+            # ==========================================
+            st.divider()
+            st.subheader("🤖 앤트리치 퀀트 AI 리포트")
+            
+            # ① 낙폭 진단 로직
+            if current_dd_pct < (overall_max_mdd + 2): # 역대 최악 부근이거나 경신했을 때
+                diag_msg = f"🚨 **상태 진단:** 현재 하락률({current_dd_pct:.2f}%)이 역대 최악의 폭락 수준에 근접하거나 이미 갱신했습니다! 역사상 경험해 보지 못한 엄청난 바닥권에 위치해 있습니다."
+            elif current_dd_pct < -30:
+                diag_msg = f"📉 **상태 진단:** 현재 하락률({current_dd_pct:.2f}%)로 보아 꽤 깊은 침체기에 머물고 있습니다. 섣부른 몰빵보다는 원칙적인 분할 접근이 필요합니다."
+            else:
+                diag_msg = f"📊 **상태 진단:** 현재 고점 대비 {current_dd_pct:.2f}% 하락 중입니다. 주식 시장에서 흔히 겪을 수 있는 일상적인 조정 구간입니다."
+
+            # ② 매수 시그널 로직
+            active_buy_signals = [d for d in target_data if "진입 시작" in d['현재 상태']]
+            if len(active_buy_signals) > 0:
+                action_msg = f"🔥 **행동 지침:** 총 **{len(active_buy_signals)}개의 타겟 구간에서 '진입 시작(초록불)'**이 켜졌습니다! 지금 사면 과거 75% 이상의 날들보다 싼, 압도적으로 유리한 가격입니다. 멘탈을 꽉 잡고 기계적인 분할 매수를 실행할 완벽한 타이밍입니다."
+            else:
+                action_msg = f"⏳ **행동 지침:** 아직 앤트리치 기준의 매수 메리트(75% 이상)를 충족하는 초록불이 켜지지 않았습니다. 뇌동매매를 멈추고 현금을 아끼며 지정가만 걸어두세요."
+
+            # ③ 타임라인 로직
+            if avg_recovery > 0:
+                time_msg = f"⏱️ **멘탈 관리:** 과거 데이터상 이 구간에서 본전을 회복하는 데 평균 **{format_days_to_ym(avg_recovery)}**이 소요되었습니다. 단기 반등을 기대하기보다, 최소 이 기간 동안 자금을 천천히 나누어 투입하는 '긴 호흡'의 물타기 플랜을 세우세요."
+            else:
+                time_msg = f"⏱️ **멘탈 관리:** 현재 선택하신 하락 구간에 대한 과거 회복 데이터가 없습니다. 보수적인 자금 관리가 필수입니다."
+
+            # AI 리포트 출력
+            st.info(f"{diag_msg}\n\n{action_msg}\n\n{time_msg}")
+
             # 최근 차트
             st.subheader("📈 최근 5년 주가 흐름 및 전고점")
             chart_df = df.tail(252 * 5)[['Close', 'Peak']]
