@@ -29,11 +29,27 @@ st.write("과거 데이터를 분석하여 하락장 평균 회복 기간을 구
 st.divider()
 
 # ==========================================
-# 1. 사이드바 (종목 및 하락률 설정)
+# 1. 사이드바 (시장 선택 기능 추가)
 # ==========================================
 with st.sidebar:
     st.header("⚙️ 분석 설정")
-    ticker = st.text_input("종목 코드 입력 (예: INTC, AAPL, MSFT, ^GSPC)", value="INTC").upper()
+    
+    # 💡 [신규] 시장 선택 라디오 버튼
+    market = st.radio("🌍 시장 선택", ["미국 주식 (US)", "한국 코스피 (KOSPI)", "한국 코스닥 (KOSDAQ)"])
+    
+    if market == "미국 주식 (US)":
+        raw_ticker = st.text_input("종목 코드 (예: INTC, AAPL, QQQ)", value="INTC").upper()
+        ticker = raw_ticker
+        currency = "$"
+    elif market == "한국 코스피 (KOSPI)":
+        raw_ticker = st.text_input("종목번호 6자리 (예: 005930)", value="005930")
+        ticker = f"{raw_ticker}.KS" if raw_ticker else ""
+        currency = "₩"
+    else:
+        raw_ticker = st.text_input("종목번호 6자리 (예: 086520)", value="086520")
+        ticker = f"{raw_ticker}.KQ" if raw_ticker else ""
+        currency = "₩"
+
     target_mdd = st.number_input("목표 분석 하락률 (%)", min_value=-90.0, max_value=-5.0, value=-50.0, step=5.0)
     buffer = st.slider("하락률 오차 범위 (±%)", min_value=1.0, max_value=10.0, value=5.0, step=1.0)
     
@@ -43,11 +59,11 @@ with st.sidebar:
 # 2. 데이터 수집 및 MDD 알고리즘
 # ==========================================
 if ticker:
-    with st.spinner(f"'{ticker}' 주가 데이터 탐색 및 퀀트 분석 중... 🕵️‍♂️"):
+    with st.spinner(f"'{raw_ticker}' 주가 데이터 탐색 및 퀀트 분석 중... 🕵️‍♂️"):
         data = yf.download(ticker, period="max", progress=False)
         
         if data.empty:
-            st.error("데이터를 불러오지 못했습니다. 종목 코드를 다시 확인해 주세요.")
+            st.error("데이터를 불러오지 못했습니다. 종목 코드나 시장 선택을 다시 확인해 주세요.")
         else:
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = data.columns.droplevel(1)
@@ -91,7 +107,12 @@ if ticker:
             # 3. 메인 대시보드 출력
             # ==========================================
             col1, col2, col3, col4 = st.columns(4)
-            col1.metric(label="현재가", value=f"${current_price:.2f}")
+            # 💡 [업데이트] 한국 주식이면 $ 대신 ₩ 표시
+            if currency == "₩":
+                col1.metric(label="현재가", value=f"{currency}{int(current_price):,}")
+            else:
+                col1.metric(label="현재가", value=f"{currency}{current_price:.2f}")
+                
             col2.metric(label="전고점 대비 하락률 (MDD)", value=f"{current_dd_pct:.2f}%", delta=f"전고점({last_peak.strftime('%y.%m.%d')}) 이후 {format_days_to_ym(current_duration)}째", delta_color="inverse")
             col3.metric(label="역대 최악의 폭락 (MAX MDD)", value=f"{overall_max_mdd:.2f}%")
             col4.metric(label="역대 최장 회복기간", value=format_days_to_ym(overall_max_days))
@@ -128,9 +149,15 @@ if ticker:
                         else:
                             status = "⏳ 대기 중"
                     
+                    # 💡 [업데이트] 한국 주식이면 소수점 버리고 정수로 콤마 찍기
+                    if currency == "₩":
+                        price_str = f"{currency}{int(target_p):,}"
+                    else:
+                        price_str = f"{currency}{target_p:.2f}"
+                        
                     target_data.append({
                         "목표 하락률": f"{lvl}%",
-                        "진입 타겟 단가": f"${target_p:.2f}",
+                        "진입 타겟 단가": price_str,
                         "현재 상태": status
                     })
                 
@@ -143,7 +170,11 @@ if ticker:
                     return [''] * len(row)
 
                 st.dataframe(target_df.style.apply(highlight_target_row, axis=1), use_container_width=True, hide_index=True)
-                st.info(f"💡 현재 일별 최고점(ATH)은 **${current_peak:.2f}** 입니다. 감정을 배제하고 형광 초록색 타겟 구역이 올 때만 기계적으로 매수하세요.")
+                
+                if currency == "₩":
+                    st.info(f"💡 현재 일별 최고점(ATH)은 **{currency}{int(current_peak):,}** 입니다. 감정을 배제하고 기계적으로 매수하세요.")
+                else:
+                    st.info(f"💡 현재 일별 최고점(ATH)은 **{currency}{current_peak:.2f}** 입니다. 감정을 배제하고 기계적으로 매수하세요.")
 
             with c2:
                 st.markdown("##### 📊 하락 깊이별 매수 메리트 (퍼센타일)")
@@ -172,63 +203,38 @@ if ticker:
                 
                 st.dataframe(pct_df.style.map(highlight_pct, subset=['매수 메리트 (역사적 하위%)']), use_container_width=True, hide_index=True)
 
-            st.divider()
-
             # ==========================================
-            # 5. 기존 평균 회복일 분석
-            # ==========================================
-            st.subheader(f"⏱️ [{target_mdd}%] 수준 폭락장 평균 회복 기간")
-            lower_bound = target_mdd - buffer
-            upper_bound = target_mdd + buffer
-            avg_recovery = 0 # 하단 코멘터리를 위한 기본값
-            
-            if not periods_df.empty:
-                target_periods = periods_df[
-                    (periods_df['최대 낙폭(%)'] >= lower_bound) & 
-                    (periods_df['최대 낙폭(%)'] <= upper_bound)
-                ]
-                
-                if not target_periods.empty:
-                    avg_recovery = int(target_periods['회복 소요일(일)'].mean())
-                    max_recovery_in_target = int(target_periods['회복 소요일(일)'].max())
-                    
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric(label=f"조건 부합 횟수", value=f"{len(target_periods)}회")
-                    c2.metric(label=f"평균 회복일", value=format_days_to_ym(avg_recovery))
-                    c3.metric(label=f"해당 구간 최장 회복일", value=format_days_to_ym(max_recovery_in_target))
-                    
-                    st.write(f"💡 **앤트리치 퀀트 전략:** 통계상 **{lower_bound}% ~ {upper_bound}%** 사이로 하락했을 때, 전고점 탈환에 평균 **{format_days_to_ym(avg_recovery)}**이 걸렸습니다.")
-                else:
-                    st.warning(f"역사상 {lower_bound}% ~ {upper_bound}% 수준의 하락 후 회복된 기록이 없습니다.")
-            
-            # ==========================================
-            # 6. [신규] 앤트리치 AI 코멘터리 (인사이트 요약)
+            # 5. [신규] 앤트리치 AI 코멘터리 (인사이트 요약)
             # ==========================================
             st.divider()
             st.subheader("🤖 앤트리치 퀀트 AI 리포트")
             
-            # ① 낙폭 진단 로직
-            if current_dd_pct < (overall_max_mdd + 2): # 역대 최악 부근이거나 경신했을 때
+            if current_dd_pct < (overall_max_mdd + 2): 
                 diag_msg = f"🚨 **상태 진단:** 현재 하락률({current_dd_pct:.2f}%)이 역대 최악의 폭락 수준에 근접하거나 이미 갱신했습니다! 역사상 경험해 보지 못한 엄청난 바닥권에 위치해 있습니다."
             elif current_dd_pct < -30:
                 diag_msg = f"📉 **상태 진단:** 현재 하락률({current_dd_pct:.2f}%)로 보아 꽤 깊은 침체기에 머물고 있습니다. 섣부른 몰빵보다는 원칙적인 분할 접근이 필요합니다."
             else:
                 diag_msg = f"📊 **상태 진단:** 현재 고점 대비 {current_dd_pct:.2f}% 하락 중입니다. 주식 시장에서 흔히 겪을 수 있는 일상적인 조정 구간입니다."
 
-            # ② 매수 시그널 로직
             active_buy_signals = [d for d in target_data if "진입 시작" in d['현재 상태']]
             if len(active_buy_signals) > 0:
                 action_msg = f"🔥 **행동 지침:** 총 **{len(active_buy_signals)}개의 타겟 구간에서 '진입 시작(초록불)'**이 켜졌습니다! 지금 사면 과거 75% 이상의 날들보다 싼, 압도적으로 유리한 가격입니다. 멘탈을 꽉 잡고 기계적인 분할 매수를 실행할 완벽한 타이밍입니다."
             else:
                 action_msg = f"⏳ **행동 지침:** 아직 앤트리치 기준의 매수 메리트(75% 이상)를 충족하는 초록불이 켜지지 않았습니다. 뇌동매매를 멈추고 현금을 아끼며 지정가만 걸어두세요."
 
-            # ③ 타임라인 로직
-            if avg_recovery > 0:
-                time_msg = f"⏱️ **멘탈 관리:** 과거 데이터상 이 구간에서 본전을 회복하는 데 평균 **{format_days_to_ym(avg_recovery)}**이 소요되었습니다. 단기 반등을 기대하기보다, 최소 이 기간 동안 자금을 천천히 나누어 투입하는 '긴 호흡'의 물타기 플랜을 세우세요."
+            lower_bound = target_mdd - buffer
+            upper_bound = target_mdd + buffer
+            
+            if not periods_df.empty:
+                target_periods = periods_df[(periods_df['최대 낙폭(%)'] >= lower_bound) & (periods_df['최대 낙폭(%)'] <= upper_bound)]
+                if not target_periods.empty:
+                    avg_recovery = int(target_periods['회복 소요일(일)'].mean())
+                    time_msg = f"⏱️ **멘탈 관리:** 과거 통계상 선택하신 하락 구간에서 본전을 회복하는 데 평균 **{format_days_to_ym(avg_recovery)}**이 소요되었습니다. 최소 이 기간을 버틸 수 있는 여윳돈으로 긴 호흡의 물타기 플랜을 세우세요."
+                else:
+                    time_msg = f"⏱️ **멘탈 관리:** 현재 선택하신 {lower_bound}% ~ {upper_bound}% 하락 구간에 대한 과거 회복 완료 데이터가 없습니다. 역대급 침체이므로 매우 보수적인 접근이 필요합니다."
             else:
-                time_msg = f"⏱️ **멘탈 관리:** 현재 선택하신 하락 구간에 대한 과거 회복 데이터가 없습니다. 보수적인 자금 관리가 필수입니다."
+                time_msg = "⏱️ **멘탈 관리:** 회복 데이터가 충분하지 않습니다."
 
-            # AI 리포트 출력
             st.info(f"{diag_msg}\n\n{action_msg}\n\n{time_msg}")
 
             # 최근 차트
