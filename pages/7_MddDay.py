@@ -52,18 +52,29 @@ with st.sidebar:
 # 2. 데이터 수집 및 MDD 알고리즘
 # ==========================================
 if search_input:
-    with st.spinner(f"'{search_input}' 주가 데이터 탐색 및 퀀트 분석 중... 🕵️‍♂️"):
+    with st.spinner(f"'{search_input}' 주가 데이터 탐색 및 기업 정보 분석 중... 🕵️‍♂️"):
         
+        # 💡 [핵심] 실제 야후 파이낸스 티커 확정 로직
+        actual_ticker = search_input
         if market == "한국 주식 (KR)":
-            data = yf.download(f"{search_input}.KS", period="max", progress=False)
+            actual_ticker = f"{search_input}.KS"
+            data = yf.download(actual_ticker, period="max", progress=False)
             if data.empty:
-                data = yf.download(f"{search_input}.KQ", period="max", progress=False)
+                actual_ticker = f"{search_input}.KQ"
+                data = yf.download(actual_ticker, period="max", progress=False)
         else:
-            data = yf.download(search_input, period="max", progress=False)
+            data = yf.download(actual_ticker, period="max", progress=False)
         
         if data.empty:
             st.error("데이터를 불러오지 못했습니다. 종목 코드(번호)를 다시 확인해 주세요.")
         else:
+            # 💡 [신규] 공식 기업명(shortName) 가져오기
+            try:
+                ticker_obj = yf.Ticker(actual_ticker)
+                company_name = ticker_obj.info.get('shortName', search_input)
+            except:
+                company_name = search_input
+                
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = data.columns.droplevel(1)
                 
@@ -105,11 +116,10 @@ if search_input:
             # ==========================================
             # 3. 메인 대시보드 출력
             # ==========================================
-            # 💡 [업데이트] 4칸에서 5칸으로 확장하고 첫 칸에 종목 코드 배치
-            col0, col1, col2, col3, col4 = st.columns(5)
+            # 💡 [업데이트] 시원하게 보이도록 기업명을 위로 올리고, 메트릭은 4칸으로 원상복구!
+            st.subheader(f"🏢 분석 종목 : **{company_name}** ({actual_ticker})")
             
-            col0.metric(label="분석 종목", value=search_input)
-            
+            col1, col2, col3, col4 = st.columns(4)
             if currency == "₩":
                 col1.metric(label="현재가", value=f"{currency}{int(current_price):,}")
             else:
