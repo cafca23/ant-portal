@@ -29,23 +29,19 @@ st.write("과거 데이터를 분석하여 하락장 평균 회복 기간을 구
 st.divider()
 
 # ==========================================
-# 1. 사이드바 (시장 선택 기능 추가)
+# 1. 사이드바 (스마트 시장 선택)
 # ==========================================
 with st.sidebar:
-    # 💡 [신규] 시장 선택 라디오 버튼
-    market = st.radio("", ["미국 주식 (US)", "한국 코스피 (KOSPI)", "한국 코스닥 (KOSDAQ)"])
+    st.header("⚙️ 분석 설정")
+    
+    # 💡 [핵심 수정] 코스피/코스닥을 '한국 주식' 하나로 통합!
+    market = st.radio("🌍 시장 선택", ["미국 주식 (US)", "한국 주식 (KR)"])
     
     if market == "미국 주식 (US)":
-        raw_ticker = st.text_input("종목 코드 (예: INTC, AAPL, QQQ)", value="INTC").upper()
-        ticker = raw_ticker
+        search_input = st.text_input("종목 코드 (예: INTC, AAPL, QQQ)", value="INTC").upper()
         currency = "$"
-    elif market == "한국 코스피 (KOSPI)":
-        raw_ticker = st.text_input("종목번호 6자리 (예: 005930)", value="005930")
-        ticker = f"{raw_ticker}.KS" if raw_ticker else ""
-        currency = "₩"
     else:
-        raw_ticker = st.text_input("종목번호 6자리 (예: 086520)", value="086520")
-        ticker = f"{raw_ticker}.KQ" if raw_ticker else ""
+        search_input = st.text_input("종목번호 6자리 (예: 삼성전자 005930, 에코프로 086520)", value="005930")
         currency = "₩"
 
     target_mdd = st.number_input("목표 분석 하락률 (%)", min_value=-90.0, max_value=-5.0, value=-50.0, step=5.0)
@@ -56,12 +52,19 @@ with st.sidebar:
 # ==========================================
 # 2. 데이터 수집 및 MDD 알고리즘
 # ==========================================
-if ticker:
-    with st.spinner(f"'{raw_ticker}' 주가 데이터 탐색 및 퀀트 분석 중... 🕵️‍♂️"):
-        data = yf.download(ticker, period="max", progress=False)
+if search_input:
+    with st.spinner(f"'{search_input}' 주가 데이터 탐색 및 퀀트 분석 중... 🕵️‍♂️"):
+        
+        # 💡 [스마트 탐색 로직] 한국 주식이면 .KS(코스피) 먼저, 없으면 .KQ(코스닥) 자동 탐색
+        if market == "한국 주식 (KR)":
+            data = yf.download(f"{search_input}.KS", period="max", progress=False)
+            if data.empty:
+                data = yf.download(f"{search_input}.KQ", period="max", progress=False)
+        else:
+            data = yf.download(search_input, period="max", progress=False)
         
         if data.empty:
-            st.error("데이터를 불러오지 못했습니다. 종목 코드나 시장 선택을 다시 확인해 주세요.")
+            st.error("데이터를 불러오지 못했습니다. 종목 코드(번호)를 다시 확인해 주세요.")
         else:
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = data.columns.droplevel(1)
@@ -105,7 +108,6 @@ if ticker:
             # 3. 메인 대시보드 출력
             # ==========================================
             col1, col2, col3, col4 = st.columns(4)
-            # 💡 [업데이트] 한국 주식이면 $ 대신 ₩ 표시
             if currency == "₩":
                 col1.metric(label="현재가", value=f"{currency}{int(current_price):,}")
             else:
@@ -147,7 +149,6 @@ if ticker:
                         else:
                             status = "⏳ 대기 중"
                     
-                    # 💡 [업데이트] 한국 주식이면 소수점 버리고 정수로 콤마 찍기
                     if currency == "₩":
                         price_str = f"{currency}{int(target_p):,}"
                     else:
@@ -170,9 +171,9 @@ if ticker:
                 st.dataframe(target_df.style.apply(highlight_target_row, axis=1), use_container_width=True, hide_index=True)
                 
                 if currency == "₩":
-                    st.info(f"💡 현재 일별 최고점(ATH)은 **{currency}{int(current_peak):,}** 입니다. 감정을 배제하고 기계적으로 매수하세요.")
+                    st.info(f"💡 현재 일별 최고점(ATH)은 **{currency}{int(current_peak):,}** 입니다. 감정을 배제하고 형광 초록색 타겟 구역이 올 때만 기계적으로 매수하세요.")
                 else:
-                    st.info(f"💡 현재 일별 최고점(ATH)은 **{currency}{current_peak:.2f}** 입니다. 감정을 배제하고 기계적으로 매수하세요.")
+                    st.info(f"💡 현재 일별 최고점(ATH)은 **{currency}{current_peak:.2f}** 입니다. 감정을 배제하고 형광 초록색 타겟 구역이 올 때만 기계적으로 매수하세요.")
 
             with c2:
                 st.markdown("##### 📊 하락 깊이별 매수 메리트 (퍼센타일)")
