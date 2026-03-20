@@ -25,15 +25,21 @@ def format_days_to_ym(days):
     else:
         return f"{days}일"
 
-# 💡 [핵심 수정] euc-kr 대신 모든 한글을 지원하는 cp949 인코딩 적용!
+# 💡 [핵심 수정] 네이버 서버 인코딩 변경(UTF-8) 완벽 대응 자동 감지 로직
 def get_kr_company_name(code):
     try:
         url = f"https://finance.naver.com/item/main.naver?code={code}"
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
         req = urllib.request.Request(url, headers=headers)
-        # 🚨 여기서 euc-kr 대신 cp949를 사용하여 글자 꼬임을 원천 차단합니다.
-        html = urllib.request.urlopen(req, timeout=5).read().decode('cp949', errors='ignore')
+        response = urllib.request.urlopen(req, timeout=5).read()
         
+        # 1차 시도: 최신 글로벌 표준 UTF-8로 해독
+        try:
+            html = response.decode('utf-8')
+        # 2차 시도: 구형 페이지일 경우 cp949로 해독
+        except UnicodeDecodeError:
+            html = response.decode('cp949', errors='ignore')
+            
         title_start = html.find('<title>') + 7
         title_end = html.find('</title>')
         if title_start > 6 and title_end > -1:
@@ -150,7 +156,7 @@ if search_input:
             st.divider()
             
             # ==========================================
-            # 4. 매 매수 타점 (기준가) & 퍼센타일 표
+            # 4. 매수 타점 (기준가) & 퍼센타일 표
             # ==========================================
             st.subheader("🎯 기계적 분할 매수 타점 & 메리트 분석")
             
