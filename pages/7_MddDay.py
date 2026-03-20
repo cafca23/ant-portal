@@ -84,20 +84,39 @@ if ticker:
             
             st.divider()
             
-            # ==========================================
+# ==========================================
             # 4. [신규] 매수 타점 (기준가) & 퍼센타일 표
             # ==========================================
             st.subheader("🎯 기계적 분할 매수 타점 & 메리트 분석")
             
+            total_days = len(df) # 두 표가 공유하도록 위로 이동
             c1, c2 = st.columns([1, 1])
             
             with c1:
                 st.markdown("##### 📍 목표 하락률별 진입 단가")
-                target_levels = [-20, -30, -40, -50, -60, -70, -80]
+                # 오른쪽 표와 싱크를 맞추기 위해 5% 단위로 세분화
+                target_levels = np.arange(-20, -85, -5) 
                 target_data = []
+                
                 for lvl in target_levels:
                     target_p = current_peak * (1 + (lvl / 100))
-                    status = "✅ 진입 가능 (도달)" if current_price <= target_p else "⏳ 대기 중"
+                    
+                    # 💡 핵심 로직: 해당 하락률의 매수 메리트(퍼센타일) 실시간 계산
+                    better_days = len(df[df['Drawdown'] >= (lvl / 100)])
+                    pct = (better_days / total_days) * 100
+                    
+                    # 상태 판별 로직 (75% 이상일 때만 '진입 시작' 허용)
+                    if pct >= 75.0:
+                        if current_price <= target_p:
+                            status = "🔥 진입 시작 (도달)"
+                        else:
+                            status = "🎯 진입 타겟 (대기중)"
+                    else:
+                        if current_price <= target_p:
+                            status = "⚠️ 관망 (메리트 부족)"
+                        else:
+                            status = "⏳ 대기 중"
+                    
                     target_data.append({
                         "목표 하락률": f"{lvl}%",
                         "진입 타겟 단가": f"${target_p:.2f}",
@@ -109,13 +128,10 @@ if ticker:
 
             with c2:
                 st.markdown("##### 📊 하락 깊이별 매수 메리트 (퍼센타일)")
-                # 백분위수(회복률) 계산 로직
                 mdd_bins = np.arange(0, -95, -5)
                 percentile_data = []
-                total_days = len(df)
                 
                 for mdd_val in mdd_bins:
-                    # 과거에 해당 MDD보다 '덜' 빠졌던 날의 비율
                     better_days = len(df[df['Drawdown'] >= (mdd_val / 100)])
                     pct = (better_days / total_days) * 100
                     percentile_data.append({
@@ -125,7 +141,6 @@ if ticker:
                 
                 pct_df = pd.DataFrame(percentile_data)
                 
-                # 색상 하이라이트 함수 (50% 연한 노랑, 75% 진한 노랑)
                 def highlight_pct(val):
                     try:
                         num = float(val.replace('%', ''))
@@ -136,6 +151,7 @@ if ticker:
                     except: pass
                     return ''
                 
+                # 최신 Pandas 버전에 맞게 applymap 대신 map 사용
                 st.dataframe(pct_df.style.map(highlight_pct, subset=['매수 메리트 (역사적 하위%)']), use_container_width=True, hide_index=True)
 
             st.divider()
