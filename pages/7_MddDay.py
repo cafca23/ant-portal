@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import urllib.request
 import urllib.parse
+import json
 
 # ==========================================
 # 0. 페이지 세팅 및 도우미 함수
@@ -26,57 +27,27 @@ def format_days_to_ym(days):
     else:
         return f"{days}일"
 
-# 💡 한국 주식 네이버 금융 크롤링 (자동 인코딩 감지)
-def get_kr_company_name(code):
+# 💡 [가장 확실한 해결책] 네이버 금융 '자동완성 API'를 직접 타격해서 정답만 가져옵니다.
+def get_korean_name_perfect(ticker):
     try:
-        url = f"https://finance.naver.com/item/main.naver?code={code}"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+        # ticker가 INTC면 인텔, 030200이면 KT를 뱉어내는 숨겨진 공식 API입니다.
+        query = urllib.parse.quote(ticker)
+        url = f"https://ac.finance.naver.com/ac?q={query}&q_enc=utf-8&st=111&r_format=json&r_enc=utf-8"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Referer': 'https://finance.naver.com/'
+        }
         req = urllib.request.Request(url, headers=headers)
-        response = urllib.request.urlopen(req, timeout=5).read()
+        response = urllib.request.urlopen(req, timeout=5).read().decode('utf-8')
+        data = json.loads(response)
         
-        try:
-            html = response.decode('utf-8')
-        except UnicodeDecodeError:
-            html = response.decode('cp949', errors='ignore')
-            
-        title_start = html.find('<title>') + 7
-        title_end = html.find('</title>')
-        if title_start > 6 and title_end > -1:
-            title_text = html[title_start:title_end]
-            company_name = title_text.split(':')[0].strip()
-            return company_name
-    except Exception as e:
-        pass
-    return code 
-
-# 💡 [신규] 미국 주식 네이버 검색 크롤링 (한글 이름 추출)
-def get_us_company_name_kr(ticker):
-    try:
-        # 네이버에 "INTC 주가" 라고 검색합니다.
-        query = urllib.parse.quote(f"{ticker} 주가")
-        url = f"https://search.naver.com/search.naver?query={query}"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
-        req = urllib.request.Request(url, headers=headers)
-        html = urllib.request.urlopen(req, timeout=5).read().decode('utf-8', errors='ignore')
-        
-        title_start = html.find('<title>') + 7
-        title_end = html.find('</title>')
-        if title_start > 6 and title_end > -1:
-            title_text = html[title_start:title_end]
-            # 타이틀이 "인텔 주가 : 네이버 통합검색" 형태로 나옵니다.
-            if " : 네이버" in title_text:
-                name_part = title_text.split(' : 네이버')[0]
-                name = name_part.replace('주가', '').replace('주식', '').strip()
-                if name:
-                    return name
+        # API 응답 구조에서 정확히 한국어 이름만 빼옵니다.
+        items = data.get('items', [])
+        if items and len(items[0]) > 0:
+            return items[0][0][1] # 여기가 '인텔', 'KT', '삼성전자'가 있는 위치입니다.
     except Exception:
         pass
-    
-    # 만약 검색에 실패하면 기존처럼 야후 파이낸스 영어 이름(또는 티커)으로 띄워줍니다.
-    try:
-        return yf.Ticker(ticker).info.get('shortName', ticker)
-    except:
-        return ticker
+    return None
 
 st.title("🛡️ 앤트리치 MDD & 퀀트 분할매수 계산기")
 st.write("과거 데이터를 분석하여 하락장 평균 회복 기간을 구하고, 잃지 않는 분할 매수 타점을 시각화합니다.")
@@ -91,10 +62,10 @@ with st.sidebar:
     market = st.radio("🌍 시장 선택", ["미국 주식 (US)", "한국 주식 (KR)"])
     
     if market == "미국 주식 (US)":
-        search_input = st.text_input("종목 코드 (예: AAPL, MSFT, TSLA)", value="INTC").upper()
+        search_input = st.text_input("종목 코드 (예: INTC, AAPL, TSLA)", value="INTC").upper()
         currency = "$"
     else:
-        search_input = st.text_input("종목번호 6자리 (예: 삼성전자 005930)", value="005930")
+        search_input = st.text_input("종목번호 6자리 (예: 삼성전자 005930, KT 030200)", value="005930")
         currency = "₩"
 
     target_mdd = st.number_input("목표 분석 하락률 (%)", min_value=-90.0, max_value=-5.0, value=-50.0, step=5.0)
@@ -109,6 +80,10 @@ if search_input:
     with st.spinner(f"'{search_input}' 주가 데이터 탐색 및 기업 정보 분석 중... 🕵️‍♂️"):
         
         actual_ticker = search_input
+        
+        # 💡 미국 주식이든 한국 주식이든 무조건 API를 통해 한글 이름을 먼저 찾습니다.
+        perfect_kr_name = get_korean_name_perfect(search_input)
+        
         if market == "한국 주식 (KR)":
             actual_ticker = f"{search_input}.KS"
             data = yf.download(actual_ticker, period="max", progress=False)
@@ -116,15 +91,23 @@ if search_input:
                 actual_ticker = f"{search_input}.KQ"
                 data = yf.download(actual_ticker, period="max", progress=False)
             
-            company_name = get_kr_company_name(search_input)
+            # 한국 주식 이름 확정 (API 실패 시 숫자로 표기)
+            company_name = perfect_kr_name if perfect_kr_name else search_input
             
         else:
             data = yf.download(actual_ticker, period="max", progress=False)
-            # 💡 [업데이트] 미국 주식도 한글 이름 크롤러를 태웁니다!
-            company_name = get_us_company_name_kr(search_input)
+            
+            # 미국 주식 이름 확정 (API 실패 시 야후 파이낸스 영문 이름으로 대체)
+            if perfect_kr_name:
+                company_name = perfect_kr_name
+            else:
+                try:
+                    company_name = yf.Ticker(actual_ticker).info.get('shortName', search_input)
+                except:
+                    company_name = search_input
         
         if data.empty:
-            st.error("데이터를 불러오지 못했습니다. 종목 코드를 다시 확인해 주세요.")
+            st.error("데이터를 불러오지 못했습니다. 종목 코드(번호)를 다시 확인해 주세요.")
         else:
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = data.columns.droplevel(1)
@@ -167,7 +150,7 @@ if search_input:
             # ==========================================
             # 3. 메인 대시보드 출력
             # ==========================================
-            # 💡 [업데이트] 미국주식도 "기업명 : 애플" 처럼 출력됩니다.
+            # 💡 [성공] 괄호 없이 오직 이름만 예쁘게 출력!
             st.subheader(f"🏢 기업명 : **{company_name}**")
             
             col1, col2, col3, col4 = st.columns(4)
