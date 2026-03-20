@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import urllib.request
+import urllib.parse
 
 # ==========================================
 # 0. 페이지 세팅 및 도우미 함수
@@ -25,7 +26,7 @@ def format_days_to_ym(days):
     else:
         return f"{days}일"
 
-# 💡 [핵심 수정] 네이버 서버 인코딩 변경(UTF-8) 완벽 대응 자동 감지 로직
+# 💡 한국 주식 네이버 금융 크롤링 (자동 인코딩 감지)
 def get_kr_company_name(code):
     try:
         url = f"https://finance.naver.com/item/main.naver?code={code}"
@@ -33,10 +34,8 @@ def get_kr_company_name(code):
         req = urllib.request.Request(url, headers=headers)
         response = urllib.request.urlopen(req, timeout=5).read()
         
-        # 1차 시도: 최신 글로벌 표준 UTF-8로 해독
         try:
             html = response.decode('utf-8')
-        # 2차 시도: 구형 페이지일 경우 cp949로 해독
         except UnicodeDecodeError:
             html = response.decode('cp949', errors='ignore')
             
@@ -49,6 +48,35 @@ def get_kr_company_name(code):
     except Exception as e:
         pass
     return code 
+
+# 💡 [신규] 미국 주식 네이버 검색 크롤링 (한글 이름 추출)
+def get_us_company_name_kr(ticker):
+    try:
+        # 네이버에 "INTC 주가" 라고 검색합니다.
+        query = urllib.parse.quote(f"{ticker} 주가")
+        url = f"https://search.naver.com/search.naver?query={query}"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+        req = urllib.request.Request(url, headers=headers)
+        html = urllib.request.urlopen(req, timeout=5).read().decode('utf-8', errors='ignore')
+        
+        title_start = html.find('<title>') + 7
+        title_end = html.find('</title>')
+        if title_start > 6 and title_end > -1:
+            title_text = html[title_start:title_end]
+            # 타이틀이 "인텔 주가 : 네이버 통합검색" 형태로 나옵니다.
+            if " : 네이버" in title_text:
+                name_part = title_text.split(' : 네이버')[0]
+                name = name_part.replace('주가', '').replace('주식', '').strip()
+                if name:
+                    return name
+    except Exception:
+        pass
+    
+    # 만약 검색에 실패하면 기존처럼 야후 파이낸스 영어 이름(또는 티커)으로 띄워줍니다.
+    try:
+        return yf.Ticker(ticker).info.get('shortName', ticker)
+    except:
+        return ticker
 
 st.title("🛡️ 앤트리치 MDD & 퀀트 분할매수 계산기")
 st.write("과거 데이터를 분석하여 하락장 평균 회복 기간을 구하고, 잃지 않는 분할 매수 타점을 시각화합니다.")
@@ -63,10 +91,10 @@ with st.sidebar:
     market = st.radio("🌍 시장 선택", ["미국 주식 (US)", "한국 주식 (KR)"])
     
     if market == "미국 주식 (US)":
-        search_input = st.text_input("종목 코드 (예: INTC, AAPL, QQQ)", value="INTC").upper()
+        search_input = st.text_input("종목 코드 (예: AAPL, MSFT, TSLA)", value="INTC").upper()
         currency = "$"
     else:
-        search_input = st.text_input("종목번호 6자리 (예: 삼성전자 005930, SK텔레콤 017670)", value="005930")
+        search_input = st.text_input("종목번호 6자리 (예: 삼성전자 005930)", value="005930")
         currency = "₩"
 
     target_mdd = st.number_input("목표 분석 하락률 (%)", min_value=-90.0, max_value=-5.0, value=-50.0, step=5.0)
@@ -92,13 +120,11 @@ if search_input:
             
         else:
             data = yf.download(actual_ticker, period="max", progress=False)
-            try:
-                company_name = yf.Ticker(actual_ticker).info.get('shortName', search_input)
-            except:
-                company_name = search_input
+            # 💡 [업데이트] 미국 주식도 한글 이름 크롤러를 태웁니다!
+            company_name = get_us_company_name_kr(search_input)
         
         if data.empty:
-            st.error("데이터를 불러오지 못했습니다. 종목 코드(번호)를 다시 확인해 주세요.")
+            st.error("데이터를 불러오지 못했습니다. 종목 코드를 다시 확인해 주세요.")
         else:
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = data.columns.droplevel(1)
@@ -141,6 +167,7 @@ if search_input:
             # ==========================================
             # 3. 메인 대시보드 출력
             # ==========================================
+            # 💡 [업데이트] 미국주식도 "기업명 : 애플" 처럼 출력됩니다.
             st.subheader(f"🏢 기업명 : **{company_name}**")
             
             col1, col2, col3, col4 = st.columns(4)
