@@ -34,7 +34,6 @@ st.divider()
 with st.sidebar:
     st.header("⚙️ 분석 설정")
     
-    # 💡 [핵심 수정] 코스피/코스닥을 '한국 주식' 하나로 통합!
     market = st.radio("🌍 시장 선택", ["미국 주식 (US)", "한국 주식 (KR)"])
     
     if market == "미국 주식 (US)":
@@ -55,7 +54,6 @@ with st.sidebar:
 if search_input:
     with st.spinner(f"'{search_input}' 주가 데이터 탐색 및 퀀트 분석 중... 🕵️‍♂️"):
         
-        # 💡 [스마트 탐색 로직] 한국 주식이면 .KS(코스피) 먼저, 없으면 .KQ(코스닥) 자동 탐색
         if market == "한국 주식 (KR)":
             data = yf.download(f"{search_input}.KS", period="max", progress=False)
             if data.empty:
@@ -107,7 +105,11 @@ if search_input:
             # ==========================================
             # 3. 메인 대시보드 출력
             # ==========================================
-            col1, col2, col3, col4 = st.columns(4)
+            # 💡 [업데이트] 4칸에서 5칸으로 확장하고 첫 칸에 종목 코드 배치
+            col0, col1, col2, col3, col4 = st.columns(5)
+            
+            col0.metric(label="분석 종목", value=search_input)
+            
             if currency == "₩":
                 col1.metric(label="현재가", value=f"{currency}{int(current_price):,}")
             else:
@@ -203,7 +205,7 @@ if search_input:
                 st.dataframe(pct_df.style.map(highlight_pct, subset=['매수 메리트 (역사적 하위%)']), use_container_width=True, hide_index=True)
 
             # ==========================================
-            # 5. [신규] 앤트리치 AI 코멘터리 (인사이트 요약)
+            # 5. 앤트리치 AI 코멘터리 (인사이트 요약)
             # ==========================================
             st.divider()
             st.subheader("🤖 앤트리치 퀀트 AI 리포트")
