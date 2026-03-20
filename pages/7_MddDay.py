@@ -78,7 +78,7 @@ if ticker:
             # ==========================================
             col1, col2, col3, col4 = st.columns(4)
             col1.metric(label="현재가", value=f"${current_price:.2f}")
-            col2.metric(label="최고점 대비 하락률 (MDD)", value=f"{current_dd_pct:.2f}%", delta=f"최고점({last_peak.strftime('%y.%m.%d')}) 이후 {current_duration}일째", delta_color="inverse")
+            col2.metric(label="전고점 대비 하락률 (MDD)", value=f"{current_dd_pct:.2f}%", delta=f"전고점({last_peak.strftime('%y.%m.%d')}) 이후 {current_duration}일째", delta_color="inverse")
             col3.metric(label="역대 최악의 폭락 (MAX MDD)", value=f"{overall_max_mdd:.2f}%")
             col4.metric(label="역대 최장 회복기간", value=f"{overall_max_days}일")
             
