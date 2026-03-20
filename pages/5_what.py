@@ -30,12 +30,6 @@ if st.query_params.get("from") == "blog":
     st.session_state.passed = True
     st.query_params.clear()
 
-if not st.session_state.passed:
-    st.error("🚨 비정상적인 접근입니다!")
-    st.write("이 **[앤트리치 테마주 심층 분석]**은 블로그 방문자 전용 프리미엄 기능입니다.")
-    st.write("아래 버튼을 눌러 블로그를 통해 정식으로 접속해 주세요! 🐜")
-    st.link_button("👉 앤트리치 블로그로 이동하기", "https://blog.naver.com/antrich10")
-    st.stop()
 # ==========================================
 
 st.title("🎯 테마주 핵심 수혜주 분석 보고")
