@@ -8,7 +8,6 @@ import numpy as np
 # ==========================================
 st.set_page_config(page_title="앤트리치 MDD 회복일 계산기", page_icon="🛡️", layout="wide")
 
-# 💡 [신규] 일수를 'X년 Y개월'로 직관적으로 바꿔주는 함수
 def format_days_to_ym(days):
     if pd.isna(days) or days == 0:
         return "0일"
@@ -138,18 +137,15 @@ if ticker:
                 
                 target_df = pd.DataFrame(target_data)
                 
-                # 💡 [업데이트] 현재가가 목표 단가 이하일 때(도달 시) 해당 행을 형광 초록으로 칠하는 함수
+                # 💡 [핵심 수정] 상태 텍스트에 "진입 타겟" 또는 "진입 시작"이 있을 때만 형광 초록 칠하기
                 def highlight_target_row(row):
-                    try:
-                        val = float(row['진입 타겟 단가'].replace('$', '').replace(',', ''))
-                        if current_price <= val:
-                            return ['background-color: #39ff14; color: black; font-weight: bold;'] * len(row)
-                    except:
-                        pass
+                    status_text = row['현재 상태']
+                    if "진입 타겟" in status_text or "진입 시작" in status_text:
+                        return ['background-color: #39ff14; color: black; font-weight: bold;'] * len(row)
                     return [''] * len(row)
 
                 st.dataframe(target_df.style.apply(highlight_target_row, axis=1), use_container_width=True, hide_index=True)
-                st.info(f"💡 현재 일별 최고점(ATH)은 **${current_peak:.2f}** 입니다. 감정을 배제하고 형광 초록색(도달) 불이 들어왔을 때만 기계적으로 매수하세요.")
+                st.info(f"💡 현재 일별 최고점(ATH)은 **${current_peak:.2f}** 입니다. 감정을 배제하고 형광 초록색 타겟 구역이 올 때만 기계적으로 매수하세요.")
 
             with c2:
                 st.markdown("##### 📊 하락 깊이별 매수 메리트 (퍼센타일)")
