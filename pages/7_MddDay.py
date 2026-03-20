@@ -13,25 +13,40 @@ st.write("과거 데이터를 분석하여 하락장 평균 회복 기간을 구
 st.divider()
 
 # ==========================================
-# 1. 사이드바 (종목 및 하락률 설정)
+# 1. 사이드바 (종목, 기간 및 하락률 설정)
 # ==========================================
 with st.sidebar:
     st.header("⚙️ 분석 설정")
     ticker = st.text_input("종목 코드 입력 (예: INTC, AAPL, MSFT, ^GSPC)", value="INTC").upper()
+    
+    # [신규] 분석 기간 선택 옵션 추가
+    st.subheader("🗓️ 전고점 기준 (기간)")
+    period_dict = {
+        "전체 기간 (역사적 최고점)": "max",
+        "최근 10년": "10y",
+        "최근 5년": "5y",
+        "최근 3년": "3y",
+        "최근 1년 (52주 최고점)": "1y"
+    }
+    selected_period_label = st.selectbox("어느 기간의 고점을 기준으로 할까요?", list(period_dict.keys()))
+    selected_period = period_dict[selected_period_label]
+    
+    st.subheader("🎯 하락률 타겟")
     target_mdd = st.number_input("목표 분석 하락률 (%)", min_value=-90.0, max_value=-5.0, value=-50.0, step=5.0)
     buffer = st.slider("하락률 오차 범위 (±%)", min_value=1.0, max_value=10.0, value=5.0, step=1.0)
     
-    st.info(f"💡 해석: 과거 고점 대비 **{target_mdd - buffer}% ~ {target_mdd + buffer}%** 사이로 하락했던 구간들의 회복일만 쏙 뽑아서 평균을 냅니다.")
+    st.info(f"💡 해석: 선택하신 **[{selected_period_label}]** 내에서 최고점 대비 **{target_mdd - buffer}% ~ {target_mdd + buffer}%** 사이로 하락했던 구간을 집중 분석합니다.")
 
 # ==========================================
 # 2. 데이터 수집 및 MDD 알고리즘
 # ==========================================
 if ticker:
     with st.spinner(f"'{ticker}' 주가 데이터 탐색 및 퀀트 분석 중... 🕵️‍♂️"):
-        data = yf.download(ticker, period="max", progress=False)
+        # 사용자가 선택한 기간(selected_period)으로 데이터 다운로드
+        data = yf.download(ticker, period=selected_period, progress=False)
         
         if data.empty:
-            st.error("데이터를 불러오지 못했습니다. 종목 코드를 다시 확인해 주세요.")
+            st.error("데이터를 불러오지 못했습니다. 종목 코드나 기간을 다시 확인해 주세요.")
         else:
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = data.columns.droplevel(1)
@@ -43,7 +58,6 @@ if ticker:
             df['Peak'] = df['Close'].cummax()
             df['Drawdown'] = (df['Close'] - df['Peak']) / df['Peak']
             
-            # 현재 상태 변수
             current_price = df['Close'].iloc[-1]
             current_peak = df['Peak'].iloc[-1]
             current_dd_pct = df['Drawdown'].iloc[-1] * 100
@@ -78,34 +92,32 @@ if ticker:
             # ==========================================
             col1, col2, col3, col4 = st.columns(4)
             col1.metric(label="현재가", value=f"${current_price:.2f}")
-            col2.metric(label="전고점 대비 하락률 (MDD)", value=f"{current_dd_pct:.2f}%", delta=f"{current_duration}일째 물림", delta_color="inverse")
-            col3.metric(label="역대 최악의 폭락 (MAX MDD)", value=f"{overall_max_mdd:.2f}%")
-            col4.metric(label="역대 최장 회복기간", value=f"{overall_max_days}일")
+            # [업데이트] 날짜가 직관적으로 보이도록 수정
+            col2.metric(label="현재 하락 진행률 (MDD)", value=f"{current_dd_pct:.2f}%", delta=f"고점({last_peak.strftime('%y.%m.%d')}) 이후 {current_duration}일째", delta_color="inverse")
+            col3.metric(label=f"기간 내 최악의 폭락 (MAX)", value=f"{overall_max_mdd:.2f}%")
+            col4.metric(label="기간 내 최장 회복기간", value=f"{overall_max_days}일")
             
             st.divider()
             
-# ==========================================
-            # 4. [신규] 매수 타점 (기준가) & 퍼센타일 표
+            # ==========================================
+            # 4. 매수 타점 (기준가) & 퍼센타일 표
             # ==========================================
             st.subheader("🎯 기계적 분할 매수 타점 & 메리트 분석")
             
-            total_days = len(df) # 두 표가 공유하도록 위로 이동
+            total_days = len(df)
             c1, c2 = st.columns([1, 1])
             
             with c1:
-                st.markdown("##### 📍 목표 하락률별 진입 단가")
-                # 오른쪽 표와 싱크를 맞추기 위해 5% 단위로 세분화
+                st.markdown(f"##### 📍 목표 하락률별 진입 단가 ({selected_period_label} 기준)")
                 target_levels = np.arange(-20, -85, -5) 
                 target_data = []
                 
                 for lvl in target_levels:
                     target_p = current_peak * (1 + (lvl / 100))
                     
-                    # 💡 핵심 로직: 해당 하락률의 매수 메리트(퍼센타일) 실시간 계산
                     better_days = len(df[df['Drawdown'] >= (lvl / 100)])
                     pct = (better_days / total_days) * 100
                     
-                    # 상태 판별 로직 (75% 이상일 때만 '진입 시작' 허용)
                     if pct >= 75.0:
                         if current_price <= target_p:
                             status = "🔥 진입 시작 (도달)"
@@ -124,7 +136,7 @@ if ticker:
                     })
                 
                 st.dataframe(pd.DataFrame(target_data), use_container_width=True, hide_index=True)
-                st.info(f"💡 현재 일별 최고점(ATH)은 **${current_peak:.2f}** 입니다. 감정을 배제하고 위 타겟 단가가 올 때만 기계적으로 매수하세요.")
+                st.info(f"💡 선택하신 기간 내 최고점은 **${current_peak:.2f}** 입니다. 감정을 배제하고 기계적으로 대응하세요.")
 
             with c2:
                 st.markdown("##### 📊 하락 깊이별 매수 메리트 (퍼센타일)")
@@ -136,7 +148,7 @@ if ticker:
                     pct = (better_days / total_days) * 100
                     percentile_data.append({
                         "MDD 깊이": f"{mdd_val}%",
-                        "매수 메리트 (역사적 하위%)": f"{pct:.1f}%"
+                        "매수 메리트 (선택 기간 내 하위%)": f"{pct:.1f}%"
                     })
                 
                 pct_df = pd.DataFrame(percentile_data)
@@ -151,8 +163,7 @@ if ticker:
                     except: pass
                     return ''
                 
-                # 최신 Pandas 버전에 맞게 applymap 대신 map 사용
-                st.dataframe(pct_df.style.map(highlight_pct, subset=['매수 메리트 (역사적 하위%)']), use_container_width=True, hide_index=True)
+                st.dataframe(pct_df.style.map(highlight_pct, subset=['매수 메리트 (선택 기간 내 하위%)']), use_container_width=True, hide_index=True)
 
             st.divider()
 
@@ -178,12 +189,12 @@ if ticker:
                     c2.metric(label=f"평균 회복일", value=f"{avg_recovery}일")
                     c3.metric(label=f"해당 구간 최장 회복일", value=f"{max_recovery_in_target}일")
                     
-                    st.write(f"💡 **앤트리치 퀀트 전략:** 통계상 **{lower_bound}% ~ {upper_bound}%** 사이로 하락했을 때, 전고점 탈환에 평균 **{avg_recovery}일**이 걸렸습니다. 자금 투입 시 이 기간을 염두에 두고 호흡을 조절하세요!")
+                    st.write(f"💡 **앤트리치 퀀트 전략:** 통계상 **{lower_bound}% ~ {upper_bound}%** 사이로 하락했을 때, 전고점 탈환에 평균 **{avg_recovery}일**이 걸렸습니다.")
                 else:
-                    st.warning(f"역사상 {lower_bound}% ~ {upper_bound}% 수준의 하락 후 회복된 기록이 없습니다.")
+                    st.warning(f"선택하신 기간 내에는 {lower_bound}% ~ {upper_bound}% 수준의 하락 후 회복된 기록이 없습니다.")
             
             # 최근 차트
-            st.subheader("📈 최근 5년 주가 흐름 및 전고점")
-            chart_df = df.tail(252 * 5)[['Close', 'Peak']]
+            st.subheader(f"📈 {selected_period_label} 주가 흐름 및 전고점")
+            chart_df = df[['Close', 'Peak']]
             chart_df.columns = ['현재가', '전고점(본전)']
             st.line_chart(chart_df)
