@@ -97,7 +97,7 @@ with st.sidebar:
         search_input = st.text_input("종목번호 6자리 (예: 삼성전자 005930)", value="005930")
         currency = "₩"
 
-    target_mdd = st.number_input("목표 분석 하락률 (%)", min_value=-90.0, max_value=-5.0, value=-50.0, step=5.0)
+    target_mdd = st.number_input("목표 분석 하락률 (%)", min_value=-90.0, max_value=-5.0, value=-30.0, step=5.0)
     buffer = st.slider("하락률 오차 범위 (±%)", min_value=1.0, max_value=10.0, value=5.0, step=1.0)
     
     st.info(f"💡 해석: 과거 역사적 고점 대비 **{target_mdd - buffer}% ~ {target_mdd + buffer}%** 사이로 하락했던 구간들의 회복일만 쏙 뽑아서 평균을 냅니다.")
@@ -120,7 +120,7 @@ if search_input:
             
         else:
             data = yf.download(actual_ticker, period="max", progress=False)
-            # 💡 [업데이트] 미국 주식도 한글 이름 크롤러를 태웁니다!
+            # 💡 미국 주식도 한글 이름 크롤러를 태웁니다!
             company_name = get_us_company_name_kr(search_input)
         
         if data.empty:
@@ -167,7 +167,6 @@ if search_input:
             # ==========================================
             # 3. 메인 대시보드 출력
             # ==========================================
-            # 💡 [업데이트] 미국주식도 "기업명 : 애플" 처럼 출력됩니다.
             st.subheader(f"🏢 기업명 : **{company_name}**")
             
             col1, col2, col3, col4 = st.columns(4)
@@ -266,7 +265,36 @@ if search_input:
                 st.dataframe(pct_df.style.map(highlight_pct, subset=['매수 메리트 (역사적 하위%)']), use_container_width=True, hide_index=True)
 
             # ==========================================
-            # 5. 앤트리치 AI 코멘터리 (인사이트 요약)
+            # 5. [복구 완료] 폭락장 평균 회복 기간 분석
+            # ==========================================
+            st.divider()
+            st.subheader(f"⏱️ [{target_mdd}%] 수준 폭락장 평균 회복 기간")
+            lower_bound = target_mdd - buffer
+            upper_bound = target_mdd + buffer
+            
+            if not periods_df.empty:
+                target_periods = periods_df[
+                    (periods_df['최대 낙폭(%)'] >= lower_bound) & 
+                    (periods_df['최대 낙폭(%)'] <= upper_bound)
+                ]
+                
+                if not target_periods.empty:
+                    avg_recovery = int(target_periods['회복 소요일(일)'].mean())
+                    max_recovery_in_target = int(target_periods['회복 소요일(일)'].max())
+                    
+                    rc1, rc2, rc3 = st.columns(3)
+                    rc1.metric(label=f"조건 부합 횟수", value=f"{len(target_periods)}회")
+                    rc2.metric(label=f"평균 회복일", value=format_days_to_ym(avg_recovery))
+                    rc3.metric(label=f"해당 구간 최장 회복일", value=format_days_to_ym(max_recovery_in_target))
+                    
+                    st.write(f"💡 **앤트리치 퀀트 전략:** 통계상 **{lower_bound}% ~ {upper_bound}%** 사이로 하락했을 때, 전고점 탈환에 평균 **{format_days_to_ym(avg_recovery)}**이 걸렸습니다. 자금 투입 시 이 기간을 염두에 두고 호흡을 조절하세요!")
+                else:
+                    st.warning(f"역사상 {lower_bound}% ~ {upper_bound}% 수준의 하락 후 회복된 기록이 없습니다.")
+            else:
+                st.warning(f"역사상 {lower_bound}% ~ {upper_bound}% 수준의 하락 후 회복된 기록이 없습니다.")
+
+            # ==========================================
+            # 6. 앤트리치 AI 코멘터리 (인사이트 요약)
             # ==========================================
             st.divider()
             st.subheader("🤖 앤트리치 퀀트 AI 리포트")
