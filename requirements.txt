@@ -5,3 +5,4 @@ google-generativeai
 matplotlib
 requests
 pykrx
+setuptools
