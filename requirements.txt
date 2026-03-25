@@ -4,4 +4,4 @@ beautifulsoup4
 google-generativeai
 matplotlib
 pykrx
-setuptools
+setuptools==69.5.1
