@@ -8,8 +8,8 @@ import base64
 # ==========================================
 # 🔑 0단계: 마스터 키 영구 고정
 # ==========================================
-GOV_API_KEY = "fc9942134c063694eeb5dad340a314eec93995f86031e3653cddb5d4d38dfbd3"
-GEMINI_API_KEY = "AIzaSyAcKy9vZmmTim6cm-J1yjogH47Z6jKQKyU"
+GOV_API_KEY = st.secrets["GOV_API_KEY"]
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 # 💡 복사 귀신 완벽 방어 암호화 주소
 GOV_URL = base64.b64decode("aHR0cHM6Ly9hcGkub2RjbG91ZC5rci9hcGkvZ292MjQvdjMvc2VydmljZUxpc3Q=").decode()
