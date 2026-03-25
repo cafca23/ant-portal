@@ -8,6 +8,8 @@ import urllib.request
 import urllib.parse
 import json
 import time
+from pykrx import stock
+from datetime import datetime, timedelta
 
 # ==========================================
 # 0. AI 및 기본 세팅 (보안 금고 연결)
@@ -124,16 +126,51 @@ def get_market_news(market_type):
     return "\n".join(news_results)
 
 # (4) 💡 [한국 증시 전용] 세력 수급 & 시간외 데이터 (임시 데이터, 향후 pykrx 통합 가능)
+# (4) 💡 [한국 증시 전용] 세력 수급 & 당일 급등 팩트 데이터 (pykrx 공식 엔진 장착!)
 def get_korean_after_market_data():
-    co_buy = [
-        {"종목명": "삼성전자", "특징": "외인/기관 동시 순매수 1위 (반도체 업황 기대)"},
-        {"종목명": "SK하이닉스", "특징": "HBM 수요 폭발에 따른 수급 집중"},
-        {"종목명": "현대차", "특징": "역대급 실적 발표 후 외국인 꾸준한 매수"}
-    ]
-    after_hours = [
-        {"종목명": "우진엔텍", "상승률": "+9.8%", "특징": "원전 관련 정책 수혜 기대감"},
-        {"종목명": "에코프로머티", "상승률": "+8.5%", "특징": "장 마감 후 대규모 공급계약 공시"}
-    ]
+    # 1. 오늘 날짜 세팅 (장 마감 후 기준, 주말 보정)
+    today = datetime.today()
+    if today.weekday() == 5: today -= timedelta(days=1) # 토요일이면 금요일로
+    elif today.weekday() == 6: today -= timedelta(days=2) # 일요일이면 금요일로
+    date_str = today.strftime("%Y%m%d")
+
+    co_buy = []
+    after_hours = []
+
+    try:
+        # 2. 외국인 & 기관 순매수 상위 긁어오기 (KOSPI 기준)
+        df_foreign = stock.get_market_net_purchases_of_equities_by_ticker(date_str, date_str, "KOSPI", "외국인")
+        top_foreign = df_foreign.sort_values("순매수거래대금", ascending=False).head(3)
+        
+        for ticker, row in top_foreign.iterrows():
+            name = stock.get_market_ticker_name(ticker)
+            amt = int(row['순매수거래대금'] / 100000000) # 억원 단위 변환
+            co_buy.append({"종목명": name, "특징": f"외국인 순매수 상위 (약 {amt}억원 쓸어담음)"})
+            
+        df_inst = stock.get_market_net_purchases_of_equities_by_ticker(date_str, date_str, "KOSPI", "기관합계")
+        top_inst = df_inst.sort_values("순매수거래대금", ascending=False).head(2)
+        
+        for ticker, row in top_inst.iterrows():
+            name = stock.get_market_ticker_name(ticker)
+            amt = int(row['순매수거래대금'] / 100000000)
+            co_buy.append({"종목명": name, "특징": f"기관 순매수 상위 (약 {amt}억원 쓸어담음)"})
+
+    except Exception as e:
+        co_buy.append({"종목명": "데이터 수집 실패", "특징": "한국거래소(KRX) 서버 지연"})
+
+    try:
+        # 3. 시간외 대신 '당일 정규장 코스피 급등 상위주'로 팩트 체크!
+        df_up = stock.get_market_ohlcv(date_str, market="KOSPI")
+        top_up = df_up.sort_values("등락률", ascending=False).head(3)
+        
+        for ticker, row in top_up.iterrows():
+            name = stock.get_market_ticker_name(ticker)
+            rate = row['등락률']
+            after_hours.append({"종목명": name, "상승률": f"+{rate:.2f}%", "특징": "당일 정규장 폭등 (수급 쏠림 현상)"})
+            
+    except Exception as e:
+        after_hours.append({"종목명": "데이터 수집 실패", "상승률": "-", "특징": "한국거래소(KRX) 서버 지연"})
+
     return co_buy, after_hours
 
 # (5) 🔥 [NEW: 팩트 엔진] 네이버 실시간 증시 일정 크롤러
