@@ -6,7 +6,7 @@ import re
 import base64
 
 # ==========================================
-# 🔑 0단계: 마스터 키 영구 고정
+# 🔑 0단계: 마스터 키 영구 고정 (금고에서 꺼내오기)
 # ==========================================
 GOV_API_KEY = st.secrets["GOV_API_KEY"]
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
