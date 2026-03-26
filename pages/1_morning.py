@@ -173,49 +173,35 @@ def get_korean_after_market_data():
 
     return co_buy, after_hours
 
-# (5) 🔥 [NEW: 팩트 엔진] 네이버 실시간 증시 일정 크롤러
+# (5) 🔥 [NEW: 팩트 엔진] 네이버 실시간 증시 일정 (API 방식으로 영구 업그레이드!)
 def get_naver_schedule():
-    url = "https://finance.naver.com/" # 네이버 금융 메인 페이지
     try:
-        res = requests.get(url, headers=headers)
-        soup = BeautifulSoup(res.text, "html.parser")
+        # 대표님이 이미 세팅해둔 네이버 API 키를 그대로 활용합니다.
+        client_id = st.secrets["NAVER_CLIENT_ID"]
+        client_secret = st.secrets["NAVER_CLIENT_SECRET"]
         
-        # 네이버 금융 메인 페이지에서 '주요 증시 일정' 영역을 찾아 크롤링합니다.
-        # 주의: 네이버 페이지 구조가 바뀌면 이 부분 코드를 수정해야 할 수 있습니다.
-        schedule_section = soup.find('div', id='major_financial_indicator') # 예시 target ID, 실제 구조 확인 필요
+        # 검색어: 언론사가 매일 올리는 증시 일정 기사 타겟팅
+        query = urllib.parse.quote("오늘의 증시 일정 OR 주간 증시 일정")
+        url = f"https://openapi.naver.com/v1/search/news.json?query={query}&display=3&sort=sim"
         
-        if not schedule_section:
-            # 메인 페이지에서 못 찾을 경우, 눈치껏 뉴스 헤드라인에서 일정 관련 키워드를 추출합니다.
-            major_news = soup.find_all('span', class_='tit') # 예시 class
-            schedules = []
-            keywords = ['발표', '학회', '공시', '만기', '출시']
-            for news in major_news:
-                text = news.text.strip()
-                if any(keyword in text for keyword in keywords):
-                    schedules.append(text)
-            
-            if schedules:
-                return "\n".join([f"- {s}" for s in schedules[:2]])
-            
-            return "- 네이버 실시간 일정 수집 실패 (페이지 구조 변경됨)"
-
-        schedule_list = []
-        # 해당 섹션 내에서 일정 리스트를 긁어옵니다.
-        for item in schedule_section.find_all('li'):
-            date = item.find('span', class_='date') # 날짜 class
-            title = item.find('span', class_='tit') # 제목 class
-            if date and title:
-                schedule_list.append(f"- [{date.text.strip()}] {title.text.strip()}")
-            elif title:
-                 schedule_list.append(f"- {title.text.strip()}")
+        request = urllib.request.Request(url)
+        request.add_header("X-Naver-Client-Id", client_id)
+        request.add_header("X-Naver-Client-Secret", client_secret)
         
-        if not schedule_list:
-            return "- 오늘 뚜렷한 주요 증시 일정 없음"
+        response = urllib.request.urlopen(request)
+        if response.getcode() == 200:
+            data = json.loads(response.read().decode('utf-8'))
+            schedule_list = []
+            for item in data['items']:
+                # 불필요한 태그 지우고 깔끔한 팩트 텍스트만 추출
+                clean_title = BeautifulSoup(item['title'], 'html.parser').text
+                schedule_list.append(f"- 📅 {clean_title}")
             
-        return "\n".join(schedule_list[:3]) # 상위 3개만 반환
-
+            if schedule_list:
+                return "\n".join(schedule_list)
+        return "- 오늘 뚜렷한 주요 증시 일정 뉴스 없음"
     except Exception as e:
-        return f"- 네이버 일정 크롤링 오류: {e}"
+        return f"- 증시 일정 데이터 수집 실패: {e}"
 
 # ==========================================
 # 3. 메인 실행 버튼 및 AI 작문 엔진
