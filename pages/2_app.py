@@ -7,6 +7,7 @@ from google.api_core.exceptions import ResourceExhausted
 import urllib.request
 import urllib.parse
 import json
+import re
 
 warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 
@@ -22,7 +23,7 @@ headers = {
 }
 
 st.set_page_config(page_title="앤트리치 봇", page_icon="🐜")
-st.title("🐜 앤트리치 종목 심층 분석 봇")
+st.title("🐜 앤트리치 종목 심층 분석 봇 (인간미 탑재 & 기호 살균)")
 st.write("실시간 핫스탁을 발굴하고, 직장 상사에게 보고하는 형태의 각 잡힌 종목 분석 보고서를 즉시 생성합니다.")
 
 st.divider()
@@ -87,13 +88,19 @@ if st.button("특징주 동향 검색하기"):
             [🚨 작성 규칙]
             1. 도입부는 "본부장님(팀장님), 금일 시장 주요 특징주 동향 보고드립니다."로 시작하세요.
             2. 종목명과 핵심 상승/하락 사유를 개조식(- 함, - 됨)으로 명확히 기재하세요.
-            3. 핵심 팩트 및 종목명은 반드시 **굵은 글씨**로 강조하세요.
+            3. 핵심 팩트 및 종목명을 강조할 때는 별표(*) 대신 대괄호([ ])나 꺾쇠(【 】)를 사용하세요.
+            4. 글 전체에 걸쳐 별표(*) 기호와 이모티콘(이모지)은 단 한 개도 절대 사용하지 마세요.
             """
             
             try:
                 list_response = model.generate_content(list_prompt)
                 st.success("✅ 시장 동향 요약 완료!")
-                st.markdown(list_response.text)
+                
+                # 💡 [핵심] 파이썬 물리적 살균 (별표 및 이모티콘 제거)
+                clean_list_text = list_response.text.replace("*", "")
+                clean_list_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_list_text)
+                
+                st.markdown(clean_list_text)
             except ResourceExhausted:
                 st.error("🚨 앗! AI 과부하 상태입니다. 딱 1분만 이따가 다시 눌러주세요!")
 
@@ -159,7 +166,8 @@ if st.button("종목 분석 보고서 작성 🚀"):
                 
                 [🚨 매우 중요한 작성 규칙 및 양식]
                 - 어투: 철저하게 직장 상사에게 보고하는 비즈니스 포맷(간결한 개조식: ~함, ~됨, ~전망)으로 작성하세요. 
-                - 팩트 강조: 주요 수치, 종목명 등 핵심 팩트는 반드시 **굵은 글씨(마크다운)**로 처리하세요.
+                - 팩트 강조: 주요 수치, 종목명 등 핵심 팩트는 강조 시 별표(*) 대신 대괄호([ ])나 꺾쇠(【 】)를 사용하세요.
+                - 기호 통제: 글 전체에 걸쳐 별표(*) 기호와 이모티콘(이모지)은 단 한 개도 절대 사용하지 마세요.
                 - 도입부: 모든 출력의 시작은 "본부장님, [{target_stock}] 관련 심층 분석 보고드립니다."로 시작하세요.
                 
                 [출력 필수 구성 (순서대로 정확히 지킬 것)]
@@ -179,13 +187,18 @@ if st.button("종목 분석 보고서 작성 🚀"):
                 6. 향후 전망 및 인사이트: (수석 분석가 관점에서의 향후 주가 방향성 및 리스크 점검)
                 7. 앤트리치의 차트분석: (현재 주가 위치 및 지지/저항선에 대한 기술적 분석 소견 보고)
                 8. 3초 결론 박스: (바쁜 상사를 위한 단 한 줄의 최종 결론 및 투자 의견)
-                💡 9. 검색 최적화(SEO) 해시태그: (네이버/구글 검색 노출을 극대화할 수 있도록 '{target_stock} 주가', '{target_stock} 전망', 엮인 테마명, 주요 경쟁사 등 트래픽이 높은 핵심 키워드 15~20개를 엄선하여 쉼표로 구분하여 작성)
+                9. 🔥 앤트리치의 찐 속마음 (인간미 코멘트) : 보고를 마친 후, 분위기를 확 바꿔 3040 직장인 개미 투자자에게 빙의해 작성하세요. 앞의 딱딱한 개조식을 버리고, "형님들, 오늘 수급 보니까 내일 무조건 탑승해야 합니다", "물린 분들 오늘 밤 미장 보면서 기도합시다 ㅠㅠ" 등 비표준어, 한탄, 유머, 인터넷 커뮤니티 말투를 섞어서 아주 찰지고 주관적인 코멘트를 2~3줄 툭 던지듯 작성해 주세요. AI 느낌을 완벽히 지우세요.
+                10. 검색 최적화(SEO) 해시태그: (네이버/구글 검색 노출을 극대화할 수 있도록 '{target_stock} 주가', '{target_stock} 전망', 엮인 테마명, 주요 경쟁사 등 트래픽이 높은 핵심 키워드 15~20개를 엄선하여 쉼표로 구분하여 작성)
                 """
                 
                 try:
                     script_response = model.generate_content(script_prompt)
                     st.success(f"✅ [{target_stock}] 심층 분석 보고서 작성이 완료되었습니다!")
                     with st.container(border=True):
-                        st.markdown(script_response.text)
+                        # 💡 [핵심] 파이썬 물리적 살균 (별표 및 이모티콘 완벽 제거)
+                        clean_script_text = script_response.text.replace("*", "")
+                        clean_script_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_script_text)
+                        
+                        st.markdown(clean_script_text)
                 except ResourceExhausted:
                     st.error("🚨 앗! AI 과부하 상태입니다. 딱 1분만 기다리셨다가 다시 버튼을 눌러주세요!")
