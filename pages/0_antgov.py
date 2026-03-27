@@ -72,7 +72,6 @@ def ai_curator_pick(policies, target_age, count):
     for attempt in range(3):
         response = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload)
         
-        # 💡 에러 코드를 사람의 언어로 번역해서 반환합니다!
         if response.status_code == 200:
             result_text = response.json()['candidates'][0]['content']['parts'][0]['text']
             numbers = [int(n) for n in re.findall(r'\d+', result_text)]
@@ -99,15 +98,15 @@ def generate_blog_post(policy_info, target_age):
     [작성 가이드라인]
     1. 도입부: '{target_age}' 독자가 공감할 현실적인 고민으로 아주 짧게 시작하세요. (상황극 대사 넣지 마세요)
     2. 본문: 어려운 말 빼고, 불릿 포인트(-)로 정책의 핵심 팩트만 요약해 주세요.
-    3. 💡 앤트리치의 시선 (SEO 코멘터리): 본문 요약 후, 검색 노출을 위해 이 타겟 세대가 자주 검색할 만한 '생활밀착형 검색어(예: 월세 방어, 청년 대출 등)'를 자연스럽게 녹여 앤트리치만의 코멘트를 2~3줄 작성해 주세요.
+    3. 🔥 [핵심] 앤트리치의 진짜 속마음 (인간미 200% 코멘트): 본문 요약 후, 검색 노출을 위한 '생활밀착형 검색어'를 자연스럽게 녹이되, **절대 AI가 쓴 기계적인 느낌이 나지 않도록 작성하세요.** '{target_age}' 타겟이 100% 공감할 수 있는 현실적인 한탄, 유머, 인터넷 커뮤니티 말투(예: "요즘 물가 미쳤는데 이거라도 꼭 챙깁시다 형님들", "애 키우는 집은 이거 모르면 진짜 손해죠 ㅠㅠ", "내 세금 이렇게라도 돌려받아야죠")를 섞어서 아주 찰지고 주관적인 코멘트를 2~3줄 툭 던지듯 작성해 주세요.
     4. 출처/태그: 맨 마지막에 주무부처, 정부24 링크와 해시태그(#) 5개를 적어주세요.
     5. ✨ [만화 주문서 통합 작성]: 글 완전 맨 마지막에 별도의 구분선(---)을 긋고, 나노바나나 등 이미지 AI에 넣을 [🎨 이미지 AI용 만화 주문서]를 한글로 작성해 주세요.
-       
-       **[주문서 필수 포함 규칙]**
-       - 지시사항 첫 줄에 반드시 다음 문장을 넣으세요: "중요: 만화 이미지를 합치지 말고, 무조건 1컷당 1개의 이미지 파일로 분리해서 생성해 줘."
-       - 총 4컷의 스토리를 짜주세요.
-       - 각 컷마다 반드시 **[장면 묘사]**와 그림 안에 들어갈 **[말풍선 대사]**를 함께 적어주세요. 대사는 타겟이 100% 공감할 수 있는 아주 현실적인 내용으로 짜주세요.
-       
+        
+        **[주문서 필수 포함 규칙]**
+        - 지시사항 첫 줄에 반드시 다음 문장을 넣으세요: "중요: 만화 이미지를 합치지 말고, 무조건 1컷당 1개의 이미지 파일로 분리해서 생성해 줘."
+        - 총 4컷의 스토리를 짜주세요.
+        - 각 컷마다 반드시 **[장면 묘사]**와 그림 안에 들어갈 **[말풍선 대사]**를 함께 적어주세요. 대사는 타겟이 100% 공감할 수 있는 아주 현실적인 내용으로 짜주세요.
+        
     6. 금지사항: 앞뒤에 ```markdown 기호는 절대 넣지 마세요.
     """
     
@@ -117,7 +116,6 @@ def generate_blog_post(policy_info, target_age):
     for attempt in range(3):
         response = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload)
         
-        # 💡 여기도 에러 코드를 친절하게 번역합니다.
         if response.status_code == 200:
             return response.json()['candidates'][0]['content']['parts'][0]['text']
         elif response.status_code == 429:
@@ -158,7 +156,6 @@ if st.button("🚀 AI 편집장, 대박 정책 골라와!", use_container_width=
             st.write(f"2. 수집 완료! 제미나이 편집장이 '{target_age}'에게 좋은 정책을 고르는 중...")
             selected_indices, ai_error = ai_curator_pick(policies, target_age, post_count)
             
-            # 💡 친절한 에러 메시지가 있으면 빨간 글씨 대신 예쁜 경고창으로 띄워줍니다!
             if ai_error:
                 status.update(label="AI 편집장 업무 중단", state="error")
                 st.warning(ai_error)
