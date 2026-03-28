@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import urllib.parse
+import pandas as pd
 from bs4 import BeautifulSoup
 import google.generativeai as genai
 
@@ -10,101 +11,79 @@ import google.generativeai as genai
 st.set_page_config(page_title="여행/캠핑 딥다이브 봇", page_icon="🏕️", layout="wide")
 
 st.title("🏕️ 전국 방방곡곡 여행/캠핑 딥다이브 봇")
-st.write("원하는 시/군/구까지 핀셋으로 집어내어 '진짜 팩트 기반'의 심층 블로그 포스팅을 작성합니다.")
+st.write("관광공사의 정보를 투명하게 표로 모두 확인하고, 원하는 곳을 골라 심층 블로그를 작성합니다.")
 st.divider()
 
-# API 키 불러오기
 try:
     public_api_key = st.secrets["GOV_API_KEY"]
     gemini_api_key = st.secrets["GEMINI_API_KEY"]
 except KeyError:
-    st.error("🚨 .streamlit/secrets.toml 파일에 TOUR_API_KEY 와 GEMINI_API_KEY 를 설정해주세요!")
+    st.error("🚨 .streamlit/secrets.toml 파일에 API 키를 설정해주세요!")
     st.stop()
 
 headers = {'User-Agent': 'Mozilla/5.0'}
 
 # ==========================================
-# 1. 공공데이터 통신 함수들 (정부 서버 에러 우회 패치)
+# 1. 공공데이터 통신 함수들 (이중 인코딩 방어 적용)
 # ==========================================
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_sigungu(api_key, a_code):
-    url = "https://apis.data.go.kr/B551011/KorService1/areaCode1" # https로 변경
-    clean_key = api_key.strip()
+    url = "http://apis.data.go.kr/B551011/KorService1/areaCode1"
+    # 💡 핵심: requests의 이중 인코딩 버그를 막기 위해 unquote 사용
     params = {
-        "serviceKey": clean_key, "numOfRows": "50", "pageNo": "1",
+        "serviceKey": urllib.parse.unquote(api_key.strip()), 
+        "numOfRows": "50", "pageNo": "1",
         "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "areaCode": a_code
     }
-    query = urllib.parse.urlencode(params, safe="%")
     try:
-        res = requests.get(f"{url}?{query}", timeout=15)
-        if not res.text.strip().startswith('{'):
-            st.error(f"🚨 [시군구 통신 에러] 공공데이터 서버 응답: {res.text[:150]}")
-            return {"전체": ""}
-            
+        res = requests.get(url, params=params, timeout=10)
         items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
         if isinstance(items, dict): items = [items]
-        
         sigungu_dict = {"전체": ""}
         for item in items:
-            if item.get('name'):
-                sigungu_dict[item.get('name')] = item.get('code')
+            if item.get('name'): sigungu_dict[item.get('name')] = item.get('code')
         return sigungu_dict
-    except Exception as e:
-        st.error(f"🚨 [시군구 시스템 에러] {e}")
-        return {"전체": ""}
+    except: return {"전체": ""}
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_places(p_type, a_code, a_name, s_code, s_name):
     places = []
-    clean_key = public_api_key.strip()
+    clean_key = urllib.parse.unquote(public_api_key.strip())
     
     if "여행지" in p_type:
-        url = "https://apis.data.go.kr/B551011/KorService1/areaBasedList1" # https로 변경
+        url = "http://apis.data.go.kr/B551011/KorService1/areaBasedList1"
         params = {
-            "serviceKey": clean_key, "numOfRows": "30", "pageNo": "1",
+            "serviceKey": clean_key, "numOfRows": "50", "pageNo": "1",
             "MobileOS": "ETC", "MobileApp": "App", "_type": "json",
-            "listYN": "Y", "arrange": "A", "contentTypeId": "12", "areaCode": a_code # Q(사진순) -> A(제목순) 변경
+            "listYN": "Y", "arrange": "A", "contentTypeId": "12", "areaCode": a_code
         }
         if s_code: params["sigunguCode"] = s_code
-        
-        query = urllib.parse.urlencode(params, safe="%")
         try:
-            res = requests.get(f"{url}?{query}", timeout=15)
-            if not res.text.strip().startswith('{'):
-                st.error(f"🚨 [여행지 통신 에러] 공공데이터 서버 응답: {res.text[:150]}")
-                return []
+            res = requests.get(url, params=params, timeout=10)
             items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
             if isinstance(items, dict): items = [items]
             for item in items:
-                if item.get('title'): places.append(item)
-        except Exception as e:
-            st.error(f"🚨 [여행지 시스템 에러] {e}")
+                if item.get('title'): 
+                    places.append({"장소명": item.get('title'), "주소": item.get('addr1', '주소 미상')})
+        except: pass
             
     else:
-        url = "https://apis.data.go.kr/B551011/GoCamping/searchList" # https로 변경
-        korean_name_map = {
-            "충북": "충청북도", "충남": "충청남도", "경북": "경상북도", 
-            "경남": "경상남도", "전북": "전라북도", "전남": "전라남도"
-        }
-        full_area_name = korean_name_map.get(a_name, a_name)
-        keyword = full_area_name if s_name == "전체" else f"{full_area_name} {s_name}"
-        
+        url = "http://apis.data.go.kr/B551011/GoCamping/searchList"
+        korean_name_map = {"충북": "충청북도", "충남": "충청남도", "경북": "경상북도", "경남": "경상남도", "전북": "전라북도", "전남": "전라남도"}
+        full_area = korean_name_map.get(a_name, a_name)
+        keyword = full_area if s_name == "전체" else f"{full_area} {s_name}"
         params = {
-            "serviceKey": clean_key, "numOfRows": "30", "pageNo": "1",
+            "serviceKey": clean_key, "numOfRows": "50", "pageNo": "1",
             "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "keyword": keyword
         }
-        query = urllib.parse.urlencode(params, safe="%")
         try:
-            res = requests.get(f"{url}?{query}", timeout=15)
-            if not res.text.strip().startswith('{'):
-                st.error(f"🚨 [캠핑장 통신 에러] 공공데이터 서버 응답: {res.text[:150]}")
-                return []
+            res = requests.get(url, params=params, timeout=10)
             items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
             if isinstance(items, dict): items = [items]
             for item in items:
-                if item.get('facltNm'): places.append(item)
-        except Exception as e:
-            st.error(f"🚨 [캠핑장 시스템 에러] {e}")
+                if item.get('facltNm'): 
+                    places.append({"장소명": item.get('facltNm'), "주소": item.get('addr1', '주소 미상')})
+        except: pass
             
     return places
 
@@ -115,36 +94,32 @@ def scrape_web_info(keyword):
         url = f"https://news.google.com/rss/search?q={clean_keyword}&hl=ko&gl=KR&ceid=KR:ko"
         res = requests.get(url, headers=headers, timeout=5)
         soup = BeautifulSoup(res.text, "html.parser")
-        for item in soup.find_all("item")[:7]:
-            scraped_data.append(item.title.text)
+        for item in soup.find_all("item")[:7]: scraped_data.append(item.title.text)
     except: pass
     return "\n".join(scraped_data) if scraped_data else "관련 검색 결과가 부족합니다."
 
 def get_exact_photo(keyword):
-    url = "https://apis.data.go.kr/B551011/PhotoGalleryService1/gallerySearchList1" # https로 변경
-    clean_key = public_api_key.strip()
+    url = "http://apis.data.go.kr/B551011/PhotoGalleryService1/gallerySearchList1"
     params = {
-        "serviceKey": clean_key, "numOfRows": "2", "pageNo": "1",
+        "serviceKey": urllib.parse.unquote(public_api_key.strip()), 
+        "numOfRows": "2", "pageNo": "1",
         "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "keyword": keyword
     }
-    query = urllib.parse.urlencode(params, safe="%")
     try:
-        res = requests.get(f"{url}?{query}", timeout=15)
-        if not res.text.strip().startswith('{'): return []
+        res = requests.get(url, params=params, timeout=10)
         items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
         if isinstance(items, dict): items = [items]
         return [p.get('galWebImageUrl', '') for p in items if p.get('galWebImageUrl')]
     except: return []
 
 # ==========================================
-# 2. 사이드바 설정 (2단계 지역 선택)
+# 2. 사이드바 설정 (지역 선택)
 # ==========================================
 with st.sidebar:
     st.header("⚙️ 검색 설정")
     post_type = st.radio("어떤 주제로 포스팅할까요?", ["📸 여행지/관광지", "⛺ 캠핑장"])
-    
     st.divider()
-    # 대한민국 전국 17개 시/도 모두 추가!
+    
     area_options = {
         "서울": "1", "인천": "2", "대전": "3", "대구": "4", "광주": "5", "부산": "6", "울산": "7", "세종": "8", 
         "경기": "31", "강원": "32", "충북": "33", "충남": "34", "경북": "35", "경남": "36", "전북": "37", "전남": "38", "제주": "39"
@@ -152,38 +127,37 @@ with st.sidebar:
     selected_area = st.selectbox("1. 광역시/도를 선택하세요:", list(area_options.keys()))
     area_code = area_options[selected_area]
     
-    # 선택한 지역의 시군구를 API로 즉시 불러와서 두 번째 드롭다운 생성
     sigungu_options = get_sigungu(public_api_key, area_code)
     selected_sigungu = st.selectbox("2. 시/군/구를 선택하세요:", list(sigungu_options.keys()))
     sigungu_code = sigungu_options[selected_sigungu]
 
 # ==========================================
-# 3. 메인 로직: 타겟 리스트업 및 포스팅
+# 3. 메인 로직: 데이터 표 출력 및 포스팅
 # ==========================================
 display_region = f"{selected_area} {selected_sigungu if selected_sigungu != '전체' else ''}".strip()
 st.subheader(f"📌 {display_region} {post_type.split(' ')[1]} 리스트")
 
-with st.spinner("한국관광공사 데이터베이스를 뒤지고 있습니다..."):
+with st.spinner("관광공사 데이터를 가져오는 중입니다..."):
     place_list = fetch_places(post_type, area_code, selected_area, sigungu_code, selected_sigungu)
 
 if not place_list:
-    st.info("해당 조건에 맞는 장소가 없거나, 공공데이터 서버 응답이 지연되고 있습니다. 다른 지역을 선택해 보세요.")
+    st.info("조건에 맞는 장소가 없거나 서버 응답이 지연되고 있습니다.")
 else:
-    options = {}
-    for p in place_list:
-        name = p.get('title') or p.get('facltNm')
-        addr = p.get('addr1', '주소 미상')
-        options[f"{name} ({addr})"] = p
-        
-    selected_label = st.selectbox("📝 포스팅할 장소를 단 1곳만 선택하세요:", list(options.keys()))
-    target_place = options[selected_label]
-    target_name = target_place.get('title') or target_place.get('facltNm')
-    target_addr = target_place.get('addr1', '주소 미상')
+    # 💡 대표님 요청: 데이터 전체를 한눈에 볼 수 있도록 표(Table)로 띄워줍니다.
+    st.write("📊 **한국관광공사 제공 데이터 (전체 리스트)**")
+    df = pd.DataFrame(place_list)
+    df.index = df.index + 1 # 인덱스 1부터 시작
+    st.dataframe(df, use_container_width=True)
+    st.divider()
     
-    st.write(f"**타겟 확정:** `{target_name}`")
+    # 표를 보고 고를 수 있도록 드롭다운 제공
+    options = {f"{p['장소명']} ({p['주소']})": p for p in place_list}
+    selected_label = st.selectbox("📝 위 표에서 분석할 장소 1곳을 선택하세요:", list(options.keys()))
+    target_name = options[selected_label]['장소명']
+    target_addr = options[selected_label]['주소']
     
     if st.button("✨ 이 장소로 심층 분석 블로그 자동 작성", type="primary", use_container_width=True):
-        with st.spinner(f"[{target_name}] 네이버/구글 후기를 스크래핑하고 포스팅을 작성 중입니다... ✍️"):
+        with st.spinner(f"[{target_name}] 웹 후기를 분석하고 포스팅을 작성 중입니다... ✍️"):
             
             web_info = scrape_web_info(target_name)
             photos = get_exact_photo(target_name)
@@ -215,7 +189,6 @@ else:
                 response = model.generate_content(prompt)
                 clean_result = response.text.replace('*', '')
                 
-                st.divider()
                 st.subheader(f"📝 [{target_name}] 심층 포스팅 완료!")
                 with st.container(border=True):
                     st.markdown(clean_result)
