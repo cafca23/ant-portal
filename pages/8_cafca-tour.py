@@ -24,16 +24,21 @@ except KeyError:
 headers = {'User-Agent': 'Mozilla/5.0'}
 
 # ==========================================
-# 1. 공공데이터 통신 함수들 (파이썬 간섭 100% 차단 방식)
+# 1. 공공데이터 통신 함수들 (원문 응답 추출기 탑재)
 # ==========================================
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_sigungu(api_key, a_code):
-    # 💡 핵심: 파이썬이 키를 변환하지 못하게 URL을 그냥 무식하게 문자열로 합쳐버립니다.
     base_url = "http://apis.data.go.kr/B551011/KorService1/areaCode1"
     full_url = f"{base_url}?serviceKey={api_key}&numOfRows=50&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json&areaCode={a_code}"
     
     try:
         res = requests.get(full_url, timeout=10)
+        # 💡 JSON 에러가 나기 전에 원본 텍스트(res.text)부터 무조건 확보!
+        raw_text = res.text.strip()
+        
+        if raw_text.startswith('<'): # 서버가 JSON 대신 XML 에러를 뱉었을 경우
+            return {"전체": ""}, f"[XML 에러 발생]\n{raw_text[:300]}"
+            
         data = res.json()
         items = data.get('response', {}).get('body', {}).get('items', {}).get('item', [])
         if isinstance(items, dict): items = [items]
@@ -41,9 +46,9 @@ def get_sigungu(api_key, a_code):
         sigungu_dict = {"전체": ""}
         for item in items:
             if item.get('name'): sigungu_dict[item.get('name')] = item.get('code')
-        return sigungu_dict, res.text # 디버그용 응답 텍스트 반환
+        return sigungu_dict, "정상 응답"
     except Exception as e: 
-        return {"전체": ""}, str(e)
+        return {"전체": ""}, f"[파이썬 에러]\n{str(e)}"
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_places(p_type, a_code, a_name, s_code, s_name):
@@ -58,14 +63,17 @@ def fetch_places(p_type, a_code, a_name, s_code, s_name):
             
         try:
             res = requests.get(full_url, timeout=10)
-            debug_log = res.text
+            raw_text = res.text.strip()
+            if raw_text.startswith('<'): return [], f"[XML 에러 발생]\n{raw_text[:300]}"
+                
+            debug_log = "정상 응답"
             items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
             if isinstance(items, dict): items = [items]
             for item in items:
                 if item.get('title'): 
                     places.append({"장소명": item.get('title'), "주소": item.get('addr1', '주소 미상')})
         except Exception as e:
-            debug_log = str(e)
+            debug_log = f"[파이썬 에러]\n{str(e)}"
             
     else:
         base_url = "http://apis.data.go.kr/B551011/GoCamping/searchList"
@@ -73,19 +81,22 @@ def fetch_places(p_type, a_code, a_name, s_code, s_name):
         full_area = korean_name_map.get(a_name, a_name)
         keyword = full_area if s_name == "전체" else f"{full_area} {s_name}"
         
-        encoded_keyword = urllib.parse.quote(keyword) # 한글 검색어만 따로 인코딩
+        encoded_keyword = urllib.parse.quote(keyword)
         full_url = f"{base_url}?serviceKey={public_api_key}&numOfRows=50&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json&keyword={encoded_keyword}"
         
         try:
             res = requests.get(full_url, timeout=10)
-            debug_log = res.text
+            raw_text = res.text.strip()
+            if raw_text.startswith('<'): return [], f"[XML 에러 발생]\n{raw_text[:300]}"
+                
+            debug_log = "정상 응답"
             items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
             if isinstance(items, dict): items = [items]
             for item in items:
                 if item.get('facltNm'): 
                     places.append({"장소명": item.get('facltNm'), "주소": item.get('addr1', '주소 미상')})
         except Exception as e:
-            debug_log = str(e)
+            debug_log = f"[파이썬 에러]\n{str(e)}"
             
     return places, debug_log
 
@@ -142,9 +153,9 @@ with st.spinner("관광공사 데이터를 가져오는 중입니다..."):
 
 if not place_list:
     st.info("조건에 맞는 장소가 없거나 데이터를 불러오지 못했습니다. 아래 디버그 창을 확인해주세요.")
-    with st.expander("🛠️ 시스템 디버그 (공공데이터포털 원본 응답)"):
-        st.write("시군구 응답:", sigungu_debug[:300])
-        st.write("장소 응답:", place_debug[:300])
+    with st.expander("🛠️ 시스템 디버그 (공공데이터포털 원본 응답)", expanded=True): # 자동으로 펼쳐지게 수정
+        st.write("시군구 응답:", sigungu_debug)
+        st.write("장소 응답:", place_debug)
 else:
     st.write("📊 **한국관광공사 제공 데이터 (전체 리스트)**")
     df = pd.DataFrame(place_list)
