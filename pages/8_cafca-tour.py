@@ -24,21 +24,19 @@ except KeyError:
 headers = {'User-Agent': 'Mozilla/5.0'}
 
 # ==========================================
-# 1. 공공데이터 통신 함수들 (에러 탐지 & 타임아웃 15초)
+# 1. 공공데이터 통신 함수들 (정부 서버 에러 우회 패치)
 # ==========================================
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_sigungu(api_key, a_code):
-    url = "http://apis.data.go.kr/B551011/KorService1/areaCode1"
-    clean_key = api_key.strip() # 혹시 모를 공백 완벽 제거
+    url = "https://apis.data.go.kr/B551011/KorService1/areaCode1" # https로 변경
+    clean_key = api_key.strip()
     params = {
         "serviceKey": clean_key, "numOfRows": "50", "pageNo": "1",
         "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "areaCode": a_code
     }
     query = urllib.parse.urlencode(params, safe="%")
     try:
-        res = requests.get(f"{url}?{query}", timeout=15) # 타임아웃 15초로 연장
-        
-        # 서버가 JSON이 아닌 에러(XML)를 뱉을 경우 화면에 붉은 글로 띄워줌
+        res = requests.get(f"{url}?{query}", timeout=15)
         if not res.text.strip().startswith('{'):
             st.error(f"🚨 [시군구 통신 에러] 공공데이터 서버 응답: {res.text[:150]}")
             return {"전체": ""}
@@ -52,7 +50,7 @@ def get_sigungu(api_key, a_code):
                 sigungu_dict[item.get('name')] = item.get('code')
         return sigungu_dict
     except Exception as e:
-        st.error(f"🚨 [시군구 시스템 에러] 타임아웃 또는 인터넷 문제: {e}")
+        st.error(f"🚨 [시군구 시스템 에러] {e}")
         return {"전체": ""}
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -61,11 +59,11 @@ def fetch_places(p_type, a_code, a_name, s_code, s_name):
     clean_key = public_api_key.strip()
     
     if "여행지" in p_type:
-        url = "http://apis.data.go.kr/B551011/KorService1/areaBasedList1"
+        url = "https://apis.data.go.kr/B551011/KorService1/areaBasedList1" # https로 변경
         params = {
             "serviceKey": clean_key, "numOfRows": "30", "pageNo": "1",
             "MobileOS": "ETC", "MobileApp": "App", "_type": "json",
-            "listYN": "Y", "arrange": "Q", "contentTypeId": "12", "areaCode": a_code
+            "listYN": "Y", "arrange": "A", "contentTypeId": "12", "areaCode": a_code # Q(사진순) -> A(제목순) 변경
         }
         if s_code: params["sigunguCode"] = s_code
         
@@ -83,8 +81,7 @@ def fetch_places(p_type, a_code, a_name, s_code, s_name):
             st.error(f"🚨 [여행지 시스템 에러] {e}")
             
     else:
-        url = "http://apis.data.go.kr/B551011/GoCamping/searchList"
-        # 💡 캠핑장 검색어 유연화 (전북 -> 전라북도 로 자동 변환해서 깐깐한 서버 달래기)
+        url = "https://apis.data.go.kr/B551011/GoCamping/searchList" # https로 변경
         korean_name_map = {
             "충북": "충청북도", "충남": "충청남도", "경북": "경상북도", 
             "경남": "경상남도", "전북": "전라북도", "전남": "전라남도"
@@ -124,7 +121,7 @@ def scrape_web_info(keyword):
     return "\n".join(scraped_data) if scraped_data else "관련 검색 결과가 부족합니다."
 
 def get_exact_photo(keyword):
-    url = "http://apis.data.go.kr/B551011/PhotoGalleryService1/gallerySearchList1"
+    url = "https://apis.data.go.kr/B551011/PhotoGalleryService1/gallerySearchList1" # https로 변경
     clean_key = public_api_key.strip()
     params = {
         "serviceKey": clean_key, "numOfRows": "2", "pageNo": "1",
