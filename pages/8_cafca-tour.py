@@ -18,7 +18,7 @@ with st.sidebar:
     st.info("API 키가 코드 안에 안전하게 저장되어 있습니다.")
     
     # st.text_input 을 지우고, 대표님의 진짜 키를 직접 따옴표 안에 넣어줍니다.
-    public_api_key = st.secrets["TOUR_API_KEY"]
+    public_api_key = st.secrets["GOV_API_KEY"]
     gemini_api_key = st.secrets["GEMINI_API_KEY"]
     
     st.divider()
