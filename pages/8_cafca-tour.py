@@ -9,8 +9,8 @@ import google.generativeai as genai
 # ==========================================
 st.set_page_config(page_title="여행/캠핑 딥다이브 봇", page_icon="🏕️", layout="wide")
 
-st.title("🏕️ 여행/캠핑 딥다이브 블로그 봇")
-st.write("지역 리스트를 확인하고, 딱 1곳을 골라 '진짜 팩트 기반'의 심층 블로그 포스팅을 작성합니다.")
+st.title("🏕️ 전국 방방곡곡 여행/캠핑 딥다이브 봇")
+st.write("원하는 시/군/구까지 핀셋으로 집어내어 '진짜 팩트 기반'의 심층 블로그 포스팅을 작성합니다.")
 st.divider()
 
 # API 키 불러오기
@@ -24,57 +24,77 @@ except KeyError:
 headers = {'User-Agent': 'Mozilla/5.0'}
 
 # ==========================================
-# 1. 사이드바 설정
+# 1. 공공데이터 통신 함수들 (시군구 조회 포함)
 # ==========================================
-with st.sidebar:
-    st.header("⚙️ 검색 설정")
-    post_type = st.radio("어떤 주제로 포스팅할까요?", ["📸 여행지/관광지", "⛺ 캠핑장"])
-    
-    area_options = {
-        "서울": "1", "인천": "2", "대전": "3", "대구": "4", 
-        "광주": "5", "부산": "6", "울산": "7", "세종": "8", "경기": "31", "강원": "32"
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_sigungu(api_key, a_code):
+    # 선택한 지역의 '시/군/구' 리스트를 가져옵니다.
+    url = "http://apis.data.go.kr/B551011/KorService1/areaCode1"
+    params = {
+        "serviceKey": api_key, "numOfRows": "50", "pageNo": "1",
+        "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "areaCode": a_code
     }
-    selected_area = st.selectbox("지역을 선택하세요:", list(area_options.keys()))
-    area_code = area_options[selected_area]
+    query = urllib.parse.urlencode(params, safe="%")
+    try:
+        res = requests.get(f"{url}?{query}", timeout=5)
+        items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
+        
+        # API 결과가 1개일 때 딕셔너리로 오는 오류 방지
+        if isinstance(items, dict):
+            items = [items]
+            
+        sigungu_dict = {"전체": ""}
+        for item in items:
+            sigungu_dict[item.get('name')] = item.get('code')
+        return sigungu_dict
+    except:
+        return {"전체": ""}
 
-# ==========================================
-# 2. 데이터 수집 함수들
-# ==========================================
 @st.cache_data(ttl=3600, show_spinner=False)
-def fetch_places(p_type, a_code, a_name):
+def fetch_places(p_type, a_code, a_name, s_code, s_name):
     places = []
     if "여행지" in p_type:
-        # 관광지(contentTypeId=12) 조회
         url = "http://apis.data.go.kr/B551011/KorService1/areaBasedList1"
         params = {
             "serviceKey": public_api_key, "numOfRows": "30", "pageNo": "1",
             "MobileOS": "ETC", "MobileApp": "App", "_type": "json",
             "listYN": "Y", "arrange": "Q", "contentTypeId": "12", "areaCode": a_code
         }
+        if s_code: # 시/군/구를 선택했다면 추가
+            params["sigunguCode"] = s_code
+            
+        query = urllib.parse.urlencode(params, safe="%")
+        try:
+            res = requests.get(f"{url}?{query}", timeout=5)
+            items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
+            if isinstance(items, dict): items = [items]
+            for item in items:
+                name = item.get('title')
+                if name: places.append(item)
+        except: pass
     else:
-        # 캠핑장 조회
+        # 캠핑장은 이름(키워드) 기반 검색이 훨씬 정확합니다.
         url = "http://apis.data.go.kr/B551011/GoCamping/searchList"
+        keyword = a_name if s_name == "전체" else f"{a_name} {s_name}"
         params = {
             "serviceKey": public_api_key, "numOfRows": "30", "pageNo": "1",
-            "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "keyword": a_name
+            "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "keyword": keyword
         }
-        
-    query = urllib.parse.urlencode(params, safe="%")
-    try:
-        res = requests.get(f"{url}?{query}", timeout=5)
-        items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
-        for item in items:
-            name = item.get('title') or item.get('facltNm')
-            if name:
-                places.append(item)
-    except: pass
+        query = urllib.parse.urlencode(params, safe="%")
+        try:
+            res = requests.get(f"{url}?{query}", timeout=5)
+            items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
+            if isinstance(items, dict): items = [items]
+            for item in items:
+                name = item.get('facltNm')
+                if name: places.append(item)
+        except: pass
     return places
 
 def scrape_web_info(keyword):
-    # 구글 뉴스 RSS를 통해 해당 장소의 최근 웹문서/리뷰 텍스트 긁어오기
     scraped_data = []
     try:
-        clean_keyword = urllib.parse.quote(f"{keyword} 후기 OR 리뷰 OR 여행")
+        clean_keyword = urllib.parse.quote(f"{keyword} 후기 OR 리뷰")
         url = f"https://news.google.com/rss/search?q={clean_keyword}&hl=ko&gl=KR&ceid=KR:ko"
         res = requests.get(url, headers=headers, timeout=5)
         soup = BeautifulSoup(res.text, "html.parser")
@@ -84,7 +104,6 @@ def scrape_web_info(keyword):
     return "\n".join(scraped_data) if scraped_data else "관련 검색 결과가 부족합니다."
 
 def get_exact_photo(keyword):
-    # 정확한 '장소명'으로 고화질 사진 검색
     url = "http://apis.data.go.kr/B551011/PhotoGalleryService1/gallerySearchList1"
     params = {
         "serviceKey": public_api_key, "numOfRows": "2", "pageNo": "1",
@@ -94,21 +113,43 @@ def get_exact_photo(keyword):
     try:
         res = requests.get(f"{url}?{query}", timeout=5)
         items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
+        if isinstance(items, dict): items = [items]
         return [p.get('galWebImageUrl', '') for p in items if p.get('galWebImageUrl')]
     except: return []
 
 # ==========================================
-# 3. 메인 로직: 리스트업 및 선택
+# 2. 사이드바 설정 (2단계 지역 선택)
 # ==========================================
-st.subheader(f"📌 {selected_area} 지역 {post_type.split(' ')[1]} 리스트")
+with st.sidebar:
+    st.header("⚙️ 검색 설정")
+    post_type = st.radio("어떤 주제로 포스팅할까요?", ["📸 여행지/관광지", "⛺ 캠핑장"])
+    
+    st.divider()
+    # 대한민국 전국 17개 시/도 모두 추가!
+    area_options = {
+        "서울": "1", "인천": "2", "대전": "3", "대구": "4", "광주": "5", "부산": "6", "울산": "7", "세종": "8", 
+        "경기": "31", "강원": "32", "충북": "33", "충남": "34", "경북": "35", "경남": "36", "전북": "37", "전남": "38", "제주": "39"
+    }
+    selected_area = st.selectbox("1. 광역시/도를 선택하세요:", list(area_options.keys()))
+    area_code = area_options[selected_area]
+    
+    # 선택한 지역의 시군구를 API로 즉시 불러와서 두 번째 드롭다운 생성
+    sigungu_options = get_sigungu(public_api_key, area_code)
+    selected_sigungu = st.selectbox("2. 시/군/구를 선택하세요:", list(sigungu_options.keys()))
+    sigungu_code = sigungu_options[selected_sigungu]
+
+# ==========================================
+# 3. 메인 로직: 타겟 리스트업 및 포스팅
+# ==========================================
+display_region = f"{selected_area} {selected_sigungu if selected_sigungu != '전체' else ''}".strip()
+st.subheader(f"📌 {display_region} {post_type.split(' ')[1]} 리스트")
 
 with st.spinner("한국관광공사 데이터베이스를 뒤지고 있습니다..."):
-    place_list = fetch_places(post_type, area_code, selected_area)
+    place_list = fetch_places(post_type, area_code, selected_area, sigungu_code, selected_sigungu)
 
 if not place_list:
-    st.info("조건에 맞는 장소가 없거나, 데이터를 불러오지 못했습니다.")
+    st.info("해당 조건에 맞는 장소가 없거나, 공공데이터 서버 응답이 지연되고 있습니다. 다른 지역을 선택해 보세요.")
 else:
-    # 딕셔너리로 옵션 매핑
     options = {}
     for p in place_list:
         name = p.get('title') or p.get('facltNm')
@@ -120,21 +161,14 @@ else:
     target_name = target_place.get('title') or target_place.get('facltNm')
     target_addr = target_place.get('addr1', '주소 미상')
     
-    st.write(f"**선택된 타겟:** `{target_name}`")
+    st.write(f"**타겟 확정:** `{target_name}`")
     
-    # ==========================================
-    # 4. 블로그 포스팅 생성 
-    # ==========================================
     if st.button("✨ 이 장소로 심층 분석 블로그 자동 작성", type="primary", use_container_width=True):
         with st.spinner(f"[{target_name}] 네이버/구글 후기를 스크래핑하고 포스팅을 작성 중입니다... ✍️"):
             
-            # 1. 타겟 장소 웹 스크래핑 (리뷰, 후기)
             web_info = scrape_web_info(target_name)
-            
-            # 2. 타겟 장소 정확한 사진 찾기
             photos = get_exact_photo(target_name)
             
-            # 3. AI 프롬프트 작성
             genai.configure(api_key=gemini_api_key)
             model = genai.GenerativeModel('gemini-2.5-flash')
             
@@ -154,7 +188,6 @@ else:
                사진1: ![풍경1]({photos[0] if len(photos) > 0 else ''})
                사진2: ![풍경2]({photos[1] if len(photos) > 1 else ''})
             4. 마무리 및 3줄 요약: 글의 마지막에 [바쁜 분들을 위한 3줄 요약] 이라는 소제목과 함께 사람이 직접 쓴 것처럼 자연스러운 3줄 요약을 반드시 추가하세요.
-               (예시: 1. 주차는 오전에 안 가면 자리 없음 / 2. 화장실은 A구역이 제일 깨끗함 / 3. 뷰는 2층 테라스 자리가 최고!)
             5. 해시태그: SEO 최적화를 위해 관련 키워드 10개를 넣어주세요.
             6. 🚫 [절대 금지 사항]: 글 전체에 어떠한 이모지(이모티콘)도 절대 사용하지 마세요. 강조나 리스트를 위해 별표 기호(*)도 절대 사용하지 마세요. 리스트 기호가 필요하다면 하이픈(-)이나 숫자를 사용하세요.
             """
