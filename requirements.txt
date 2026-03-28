@@ -5,3 +5,4 @@ google-generativeai
 matplotlib
 pykrx
 setuptools==69.5.1
+pandas
