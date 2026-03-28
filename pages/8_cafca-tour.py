@@ -24,71 +24,91 @@ except KeyError:
 headers = {'User-Agent': 'Mozilla/5.0'}
 
 # ==========================================
-# 1. 공공데이터 통신 함수들 (시군구 조회 포함)
+# 1. 공공데이터 통신 함수들 (에러 탐지 & 타임아웃 15초)
 # ==========================================
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_sigungu(api_key, a_code):
-    # 선택한 지역의 '시/군/구' 리스트를 가져옵니다.
     url = "http://apis.data.go.kr/B551011/KorService1/areaCode1"
+    clean_key = api_key.strip() # 혹시 모를 공백 완벽 제거
     params = {
-        "serviceKey": api_key, "numOfRows": "50", "pageNo": "1",
+        "serviceKey": clean_key, "numOfRows": "50", "pageNo": "1",
         "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "areaCode": a_code
     }
     query = urllib.parse.urlencode(params, safe="%")
     try:
-        res = requests.get(f"{url}?{query}", timeout=5)
-        items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
+        res = requests.get(f"{url}?{query}", timeout=15) # 타임아웃 15초로 연장
         
-        # API 결과가 1개일 때 딕셔너리로 오는 오류 방지
-        if isinstance(items, dict):
-            items = [items]
+        # 서버가 JSON이 아닌 에러(XML)를 뱉을 경우 화면에 붉은 글로 띄워줌
+        if not res.text.strip().startswith('{'):
+            st.error(f"🚨 [시군구 통신 에러] 공공데이터 서버 응답: {res.text[:150]}")
+            return {"전체": ""}
             
+        items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
+        if isinstance(items, dict): items = [items]
+        
         sigungu_dict = {"전체": ""}
         for item in items:
-            sigungu_dict[item.get('name')] = item.get('code')
+            if item.get('name'):
+                sigungu_dict[item.get('name')] = item.get('code')
         return sigungu_dict
-    except:
+    except Exception as e:
+        st.error(f"🚨 [시군구 시스템 에러] 타임아웃 또는 인터넷 문제: {e}")
         return {"전체": ""}
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_places(p_type, a_code, a_name, s_code, s_name):
     places = []
+    clean_key = public_api_key.strip()
+    
     if "여행지" in p_type:
         url = "http://apis.data.go.kr/B551011/KorService1/areaBasedList1"
         params = {
-            "serviceKey": public_api_key, "numOfRows": "30", "pageNo": "1",
+            "serviceKey": clean_key, "numOfRows": "30", "pageNo": "1",
             "MobileOS": "ETC", "MobileApp": "App", "_type": "json",
             "listYN": "Y", "arrange": "Q", "contentTypeId": "12", "areaCode": a_code
         }
-        if s_code: # 시/군/구를 선택했다면 추가
-            params["sigunguCode"] = s_code
-            
+        if s_code: params["sigunguCode"] = s_code
+        
         query = urllib.parse.urlencode(params, safe="%")
         try:
-            res = requests.get(f"{url}?{query}", timeout=5)
+            res = requests.get(f"{url}?{query}", timeout=15)
+            if not res.text.strip().startswith('{'):
+                st.error(f"🚨 [여행지 통신 에러] 공공데이터 서버 응답: {res.text[:150]}")
+                return []
             items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
             if isinstance(items, dict): items = [items]
             for item in items:
-                name = item.get('title')
-                if name: places.append(item)
-        except: pass
+                if item.get('title'): places.append(item)
+        except Exception as e:
+            st.error(f"🚨 [여행지 시스템 에러] {e}")
+            
     else:
-        # 캠핑장은 이름(키워드) 기반 검색이 훨씬 정확합니다.
         url = "http://apis.data.go.kr/B551011/GoCamping/searchList"
-        keyword = a_name if s_name == "전체" else f"{a_name} {s_name}"
+        # 💡 캠핑장 검색어 유연화 (전북 -> 전라북도 로 자동 변환해서 깐깐한 서버 달래기)
+        korean_name_map = {
+            "충북": "충청북도", "충남": "충청남도", "경북": "경상북도", 
+            "경남": "경상남도", "전북": "전라북도", "전남": "전라남도"
+        }
+        full_area_name = korean_name_map.get(a_name, a_name)
+        keyword = full_area_name if s_name == "전체" else f"{full_area_name} {s_name}"
+        
         params = {
-            "serviceKey": public_api_key, "numOfRows": "30", "pageNo": "1",
+            "serviceKey": clean_key, "numOfRows": "30", "pageNo": "1",
             "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "keyword": keyword
         }
         query = urllib.parse.urlencode(params, safe="%")
         try:
-            res = requests.get(f"{url}?{query}", timeout=5)
+            res = requests.get(f"{url}?{query}", timeout=15)
+            if not res.text.strip().startswith('{'):
+                st.error(f"🚨 [캠핑장 통신 에러] 공공데이터 서버 응답: {res.text[:150]}")
+                return []
             items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
             if isinstance(items, dict): items = [items]
             for item in items:
-                name = item.get('facltNm')
-                if name: places.append(item)
-        except: pass
+                if item.get('facltNm'): places.append(item)
+        except Exception as e:
+            st.error(f"🚨 [캠핑장 시스템 에러] {e}")
+            
     return places
 
 def scrape_web_info(keyword):
@@ -105,13 +125,15 @@ def scrape_web_info(keyword):
 
 def get_exact_photo(keyword):
     url = "http://apis.data.go.kr/B551011/PhotoGalleryService1/gallerySearchList1"
+    clean_key = public_api_key.strip()
     params = {
-        "serviceKey": public_api_key, "numOfRows": "2", "pageNo": "1",
+        "serviceKey": clean_key, "numOfRows": "2", "pageNo": "1",
         "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "keyword": keyword
     }
     query = urllib.parse.urlencode(params, safe="%")
     try:
-        res = requests.get(f"{url}?{query}", timeout=5)
+        res = requests.get(f"{url}?{query}", timeout=15)
+        if not res.text.strip().startswith('{'): return []
         items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
         if isinstance(items, dict): items = [items]
         return [p.get('galWebImageUrl', '') for p in items if p.get('galWebImageUrl')]
