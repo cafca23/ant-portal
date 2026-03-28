@@ -24,31 +24,32 @@ except KeyError:
 headers = {'User-Agent': 'Mozilla/5.0'}
 
 # ==========================================
-# 1. 공공데이터 통신 함수들 (원문 응답 추출기 탑재)
+# 1. 공공데이터 통신 함수들 (HTTPS 강제 적용)
 # ==========================================
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_sigungu(api_key, a_code):
-    base_url = "http://apis.data.go.kr/B551011/KorService1/areaCode1"
-    full_url = f"{base_url}?serviceKey={api_key}&numOfRows=50&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json&areaCode={a_code}"
-    
+    url = "https://apis.data.go.kr/B551011/KorService1/areaCode1"
+    params = {
+        "serviceKey": api_key, "numOfRows": "50", "pageNo": "1",
+        "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "areaCode": a_code
+    }
     try:
-        res = requests.get(full_url, timeout=10)
-        # 💡 JSON 에러가 나기 전에 원본 텍스트(res.text)부터 무조건 확보!
+        res = requests.get(url, params=params, timeout=10)
         raw_text = res.text.strip()
+        debug_msg = f"[HTTP {res.status_code}] 응답: {raw_text[:200]}"
         
-        if raw_text.startswith('<'): # 서버가 JSON 대신 XML 에러를 뱉었을 경우
-            return {"전체": ""}, f"[XML 에러 발생]\n{raw_text[:300]}"
+        if not raw_text.startswith('{'):
+            return {"전체": ""}, f"비정상 응답 (키 동기화 대기중일 확률 높음): {debug_msg}"
             
-        data = res.json()
-        items = data.get('response', {}).get('body', {}).get('items', {}).get('item', [])
+        items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
         if isinstance(items, dict): items = [items]
         
         sigungu_dict = {"전체": ""}
         for item in items:
             if item.get('name'): sigungu_dict[item.get('name')] = item.get('code')
-        return sigungu_dict, "정상 응답"
+        return sigungu_dict, "정상 연결됨"
     except Exception as e: 
-        return {"전체": ""}, f"[파이썬 에러]\n{str(e)}"
+        return {"전체": ""}, f"통신 에러: {str(e)}"
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_places(p_type, a_code, a_name, s_code, s_name):
@@ -56,47 +57,47 @@ def fetch_places(p_type, a_code, a_name, s_code, s_name):
     debug_log = ""
     
     if "여행지" in p_type:
-        base_url = "http://apis.data.go.kr/B551011/KorService1/areaBasedList1"
-        full_url = f"{base_url}?serviceKey={public_api_key}&numOfRows=50&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json&listYN=Y&arrange=A&contentTypeId=12&areaCode={a_code}"
-        if s_code: 
-            full_url += f"&sigunguCode={s_code}"
+        url = "https://apis.data.go.kr/B551011/KorService1/areaBasedList1"
+        params = {
+            "serviceKey": public_api_key, "numOfRows": "50", "pageNo": "1",
+            "MobileOS": "ETC", "MobileApp": "App", "_type": "json",
+            "listYN": "Y", "arrange": "A", "contentTypeId": "12", "areaCode": a_code
+        }
+        if s_code: params["sigunguCode"] = s_code
             
         try:
-            res = requests.get(full_url, timeout=10)
+            res = requests.get(url, params=params, timeout=10)
             raw_text = res.text.strip()
-            if raw_text.startswith('<'): return [], f"[XML 에러 발생]\n{raw_text[:300]}"
+            debug_log = f"[HTTP {res.status_code}] 응답: {raw_text[:200]}"
+            if not raw_text.startswith('{'): return [], f"비정상 응답: {debug_log}"
                 
-            debug_log = "정상 응답"
             items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
             if isinstance(items, dict): items = [items]
             for item in items:
-                if item.get('title'): 
-                    places.append({"장소명": item.get('title'), "주소": item.get('addr1', '주소 미상')})
-        except Exception as e:
-            debug_log = f"[파이썬 에러]\n{str(e)}"
+                if item.get('title'): places.append({"장소명": item.get('title'), "주소": item.get('addr1', '주소 미상')})
+        except Exception as e: debug_log = f"통신 에러: {str(e)}"
             
     else:
-        base_url = "http://apis.data.go.kr/B551011/GoCamping/searchList"
+        url = "https://apis.data.go.kr/B551011/GoCamping/searchList"
         korean_name_map = {"충북": "충청북도", "충남": "충청남도", "경북": "경상북도", "경남": "경상남도", "전북": "전라북도", "전남": "전라남도"}
         full_area = korean_name_map.get(a_name, a_name)
         keyword = full_area if s_name == "전체" else f"{full_area} {s_name}"
         
-        encoded_keyword = urllib.parse.quote(keyword)
-        full_url = f"{base_url}?serviceKey={public_api_key}&numOfRows=50&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json&keyword={encoded_keyword}"
-        
+        params = {
+            "serviceKey": public_api_key, "numOfRows": "50", "pageNo": "1",
+            "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "keyword": keyword
+        }
         try:
-            res = requests.get(full_url, timeout=10)
+            res = requests.get(url, params=params, timeout=10)
             raw_text = res.text.strip()
-            if raw_text.startswith('<'): return [], f"[XML 에러 발생]\n{raw_text[:300]}"
+            debug_log = f"[HTTP {res.status_code}] 응답: {raw_text[:200]}"
+            if not raw_text.startswith('{'): return [], f"비정상 응답: {debug_log}"
                 
-            debug_log = "정상 응답"
             items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
             if isinstance(items, dict): items = [items]
             for item in items:
-                if item.get('facltNm'): 
-                    places.append({"장소명": item.get('facltNm'), "주소": item.get('addr1', '주소 미상')})
-        except Exception as e:
-            debug_log = f"[파이썬 에러]\n{str(e)}"
+                if item.get('facltNm'): places.append({"장소명": item.get('facltNm'), "주소": item.get('addr1', '주소 미상')})
+        except Exception as e: debug_log = f"통신 에러: {str(e)}"
             
     return places, debug_log
 
@@ -112,12 +113,14 @@ def scrape_web_info(keyword):
     return "\n".join(scraped_data) if scraped_data else "관련 검색 결과가 부족합니다."
 
 def get_exact_photo(keyword):
-    base_url = "http://apis.data.go.kr/B551011/PhotoGalleryService1/gallerySearchList1"
-    encoded_keyword = urllib.parse.quote(keyword)
-    full_url = f"{base_url}?serviceKey={public_api_key}&numOfRows=2&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json&keyword={encoded_keyword}"
-    
+    url = "https://apis.data.go.kr/B551011/PhotoGalleryService1/gallerySearchList1"
+    params = {
+        "serviceKey": public_api_key, "numOfRows": "2", "pageNo": "1",
+        "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "keyword": keyword
+    }
     try:
-        res = requests.get(full_url, timeout=10)
+        res = requests.get(url, params=params, timeout=10)
+        if not res.text.strip().startswith('{'): return []
         items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
         if isinstance(items, dict): items = [items]
         return [p.get('galWebImageUrl', '') for p in items if p.get('galWebImageUrl')]
@@ -152,10 +155,10 @@ with st.spinner("관광공사 데이터를 가져오는 중입니다..."):
     place_list, place_debug = fetch_places(post_type, area_code, selected_area, sigungu_code, selected_sigungu)
 
 if not place_list:
-    st.info("조건에 맞는 장소가 없거나 데이터를 불러오지 못했습니다. 아래 디버그 창을 확인해주세요.")
-    with st.expander("🛠️ 시스템 디버그 (공공데이터포털 원본 응답)", expanded=True): # 자동으로 펼쳐지게 수정
-        st.write("시군구 응답:", sigungu_debug)
-        st.write("장소 응답:", place_debug)
+    st.info("조건에 맞는 장소가 없거나 서버가 아직 열쇠를 인식하지 못하고 있습니다. 아래 디버그 창을 확인해주세요.")
+    with st.expander("🛠️ 시스템 디버그 (공공데이터포털 원본 응답)", expanded=True):
+        st.write("시군구 요청 결과:", sigungu_debug)
+        st.write("장소 요청 결과:", place_debug)
 else:
     st.write("📊 **한국관광공사 제공 데이터 (전체 리스트)**")
     df = pd.DataFrame(place_list)
