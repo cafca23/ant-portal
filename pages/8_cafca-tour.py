@@ -23,11 +23,11 @@ except KeyError:
 # ==========================================
 col1, col2, col3 = st.columns(3)
 
-# 1) 관광지 호출 (areaCode=1 서울 강제 주입)
-if col1.button("🗺️ 1. 관광지 100개 가져오기 (서울 테스트)", use_container_width=True):
+# 1) 관광지 호출 (과부하 방지 안전 모드)
+if col1.button("🗺️ 1. 관광지 10개 가져오기 (안전 모드)", use_container_width=True):
     with st.spinner("관광지 데이터 호출 중..."):
-        # 💡 핵심 해결책: 끝에 &areaCode=1 (서울)을 강제로 넣어서 정부 서버가 뻗지 않게 달래줍니다.
-        url = f"https://apis.data.go.kr/B551011/KorService1/areaBasedList1?serviceKey={public_api_key}&numOfRows=100&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json&listYN=Y&arrange=A&contentTypeId=12&areaCode=1"
+        # 💡 핵심: 서버가 뻗지 않도록 arrange, listYN 등 무거운 조건 다 빼고 numOfRows를 10개로 확 줄였습니다.
+        url = f"https://apis.data.go.kr/B551011/KorService1/areaBasedList1?serviceKey={public_api_key}&numOfRows=10&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json"
         
         try:
             res = requests.get(url, timeout=15)
@@ -37,7 +37,7 @@ if col1.button("🗺️ 1. 관광지 100개 가져오기 (서울 테스트)", us
             if not raw_text.startswith('{'):
                 st.error(f"서버 에러 발생 [HTTP {res.status_code}]\n\n{raw_text[:500]}")
             else:
-                st.success("✅ 1번 관광지 통신 성공!")
+                st.success("✅ 1번 관광지 통신 드디어 성공!")
                 items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
                 if isinstance(items, dict): items = [items]
                 
