@@ -22,10 +22,10 @@ st.divider()
 # 1. DART 공시 데이터 수집 엔진
 # ==========================================
 def get_hot_dart_reports():
-    # 오늘과 어제 날짜 구하기 (주말 대비)
+    # 💡 주말 방어: 어제, 오늘이 아니라 '최근 3일'로 기간을 넉넉하게 잡습니다. (금요일 공시 포착)
     today = datetime.today()
-    yesterday = today - timedelta(days=1)
-    bgn_de = yesterday.strftime("%Y%m%d")
+    past_day = today - timedelta(days=3) 
+    bgn_de = past_day.strftime("%Y%m%d")
     end_de = today.strftime("%Y%m%d")
     
     url = "https://opendart.fss.or.kr/api/list.json"
@@ -40,12 +40,15 @@ def get_hot_dart_reports():
         res = requests.get(url, params=params)
         data = res.json()
         
-        if data.get("status") != "000":
+        # 💡 013 에러 세탁: 조회된 데이터가 없는 건 에러가 아닙니다!
+        if data.get("status") == "013":
+            return [], None
+        elif data.get("status") != "000":
             return None, f"DART 데이터 수집 실패 (상태코드: {data.get('status')})"
             
         reports = data.get("list", [])
         
-        # 💡 개미들이 검색을 미친듯이 하는 '돈 되는 핫 키워드' 필터링
+        # 돈 되는 핫 키워드 필터링
         hot_keywords = ["유상증자", "무상증자", "단일판매", "공급계약", "자기주식", "영업잠정실적"]
         filtered_reports = []
         
@@ -73,11 +76,11 @@ if st.button("🔥 실시간 돈 되는 공시 스캔하기", use_container_widt
         if error:
             st.error(error)
         elif not hot_reports:
-            st.info("현재 시장에 뜬 굵직한 호재/악재 공시가 없습니다.")
+            # 💡 013이 뜨면 여기로 넘어와서 예쁘게 안내합니다.
+            st.info("평화로운 주말이거나, 현재 시장에 뜬 굵직한 호재/악재 공시가 없습니다. 내일 다시 스캔해 보세요!")
         else:
             st.success(f"✅ 총 {len(hot_reports)}건의 돈 되는 공시를 포착했습니다!")
             
-            # 수집된 공시 목록 보여주기
             reports_text = ""
             for i, r in enumerate(hot_reports):
                 reports_text += f"- [{r['회사명']}] {r['공시제목']} (접수일: {r['접수일자']})\n"
@@ -85,11 +88,10 @@ if st.button("🔥 실시간 돈 되는 공시 스캔하기", use_container_widt
             with st.expander("👀 포착된 원본 공시 리스트 보기"):
                 st.write(reports_text)
                 
-            # AI 프롬프트 가동!
             with st.spinner("AI 편집장이 공시 내용을 개미들 언어로 번역하여 보고서를 쓰는 중... ✍️"):
                 prompt = f"""
                 당신은 기업의 수석 투자 분석가이자 주식 블로그 '앤트리치'의 에디터입니다.
-                아래는 방금 금융감독원 DART에서 올라온 가장 뜨거운 기업 공시 리스트입니다.
+                아래는 최근 3일간 금융감독원 DART에서 올라온 가장 뜨거운 기업 공시 리스트입니다.
                 
                 {reports_text}
                 
@@ -124,7 +126,6 @@ if st.button("🔥 실시간 돈 되는 공시 스캔하기", use_container_widt
                 try:
                     response = model.generate_content(prompt)
                     
-                    # 💡 [핵심] 파이썬 단에서 물리적 살균: 별표(*)와 이모티콘 완벽 제거
                     clean_text = response.text.replace('*', '')
                     clean_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_text)
                     
