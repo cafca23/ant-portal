@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
+import urllib.parse
 
 # ==========================================
 # 0. 초기 세팅
@@ -23,11 +24,12 @@ except KeyError:
 # ==========================================
 col1, col2, col3 = st.columns(3)
 
-# 1) 관광지 호출 (과부하 방지 안전 모드)
-if col1.button("🗺️ 1. 관광지 10개 가져오기 (안전 모드)", use_container_width=True):
-    with st.spinner("관광지 데이터 호출 중..."):
-        # 💡 핵심: 서버가 뻗지 않도록 arrange, listYN 등 무거운 조건 다 빼고 numOfRows를 10개로 확 줄였습니다.
-        url = f"https://apis.data.go.kr/B551011/KorService1/areaBasedList1?serviceKey={public_api_key}&numOfRows=10&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json"
+# 1) 관광지 호출 (고장난 지역검색 대신 키워드 검색으로 우회)
+if col1.button("🗺️ 1. 전국 관광지 100개 (우회 경로 테스트)", use_container_width=True):
+    with st.spinner("관광지 데이터 우회 호출 중..."):
+        # 💡 핵심: 뻗어버린 areaBasedList1 대신, 튼튼한 searchKeyword1 API를 사용합니다. (검색어: 공원)
+        keyword = urllib.parse.quote("공원")
+        url = f"https://apis.data.go.kr/B551011/KorService1/searchKeyword1?serviceKey={public_api_key}&numOfRows=100&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json&listYN=Y&arrange=A&keyword={keyword}"
         
         try:
             res = requests.get(url, timeout=15)
@@ -37,7 +39,7 @@ if col1.button("🗺️ 1. 관광지 10개 가져오기 (안전 모드)", use_co
             if not raw_text.startswith('{'):
                 st.error(f"서버 에러 발생 [HTTP {res.status_code}]\n\n{raw_text[:500]}")
             else:
-                st.success("✅ 1번 관광지 통신 드디어 성공!")
+                st.success("✅ 1번 관광지 통신 성공! (우회 경로 돌파 완료)")
                 items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
                 if isinstance(items, dict): items = [items]
                 
