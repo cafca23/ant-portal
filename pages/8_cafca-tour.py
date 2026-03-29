@@ -1,102 +1,162 @@
 import streamlit as st
 import requests
-import pandas as pd
 import urllib.parse
+import pandas as pd
+from bs4 import BeautifulSoup
+import google.generativeai as genai
 
 # ==========================================
 # 0. 초기 세팅
 # ==========================================
-st.set_page_config(page_title="공공데이터 원본 추출기", layout="wide")
+st.set_page_config(page_title="주말 나들이 & 캠핑 봇", page_icon="🏕️", layout="wide")
 
-st.title("🚨 공공데이터 원본 100개 추출기 (필터 없음)")
-st.write("지역 선택이나 검색어 없이, 정부 서버에 있는 전국 데이터를 그대로 100개만 가져옵니다.")
+st.title("🏕️ 주말 어디 가지? (나들이+캠핑 딥다이브 봇)")
+st.write("원하는 지역의 관광지/캠핑장을 고르면, AI가 실제 후기를 분석해 파워 블로그를 작성해 줍니다.")
 st.divider()
 
-# API 키 세팅
 try:
     public_api_key = st.secrets["GOV_API_KEY"].strip()
+    gemini_api_key = st.secrets["GEMINI_API_KEY"].strip()
 except KeyError:
-    st.error("🚨 .streamlit/secrets.toml 파일에 TOUR_API_KEY 를 설정해주세요!")
+    st.error("🚨 .streamlit/secrets.toml 파일에 API 키를 설정해주세요!")
     st.stop()
 
+headers = {'User-Agent': 'Mozilla/5.0'}
+
 # ==========================================
-# 1. 3가지 원본 호출 버튼
+# 1. 통신 함수들 (안전 모드 적용)
 # ==========================================
-col1, col2, col3 = st.columns(3)
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_sigungu(api_key, a_code):
+    url = "https://apis.data.go.kr/B551011/KorService1/areaCode1"
+    params = {"serviceKey": api_key, "numOfRows": "50", "pageNo": "1", "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "areaCode": a_code}
+    try:
+        res = requests.get(url, params=params, timeout=10)
+        if not res.text.strip().startswith('{'): return {"전체": ""}
+        items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
+        if isinstance(items, dict): items = [items]
+        sigungu_dict = {"전체": ""}
+        for item in items:
+            if item.get('name'): sigungu_dict[item.get('name')] = item.get('code')
+        return sigungu_dict
+    except: return {"전체": ""}
 
-# 1) 관광지 호출 (고장난 지역검색 대신 키워드 검색으로 우회)
-if col1.button("🗺️ 1. 전국 관광지 100개 (우회 경로 테스트)", use_container_width=True):
-    with st.spinner("관광지 데이터 우회 호출 중..."):
-        # 💡 핵심: 뻗어버린 areaBasedList1 대신, 튼튼한 searchKeyword1 API를 사용합니다. (검색어: 공원)
-        keyword = urllib.parse.quote("공원")
-        url = f"https://apis.data.go.kr/B551011/KorService1/searchKeyword1?serviceKey={public_api_key}&numOfRows=100&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json&listYN=Y&arrange=A&keyword={keyword}"
-        
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_places(p_type, a_code, a_name, s_code, s_name):
+    places = []
+    
+    if "여행지" in p_type:
+        url = "https://apis.data.go.kr/B551011/KorService1/areaBasedList1"
+        params = {"serviceKey": public_api_key, "numOfRows": "50", "pageNo": "1", "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "listYN": "Y", "arrange": "A", "contentTypeId": "12", "areaCode": a_code}
+        if s_code: params["sigunguCode"] = s_code
         try:
-            res = requests.get(url, timeout=15)
-            raw_text = res.text.strip()
+            res = requests.get(url, params=params, timeout=10)
+            if not res.text.strip().startswith('{'): 
+                st.error("🚨 [안내] 관광지 API(KorService1) 권한이 없거나 동기화 대기 중(1~2시간)입니다. 먼저 '캠핑장' 모드를 이용해 주세요!")
+                return []
+            items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
+            if isinstance(items, dict): items = [items]
+            for item in items:
+                if item.get('title'): places.append({"장소명": item.get('title'), "주소": item.get('addr1', '주소 미상')})
+        except: pass
             
-            st.subheader("응답 결과")
-            if not raw_text.startswith('{'):
-                st.error(f"서버 에러 발생 [HTTP {res.status_code}]\n\n{raw_text[:500]}")
-            else:
-                st.success("✅ 1번 관광지 통신 성공! (우회 경로 돌파 완료)")
-                items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
-                if isinstance(items, dict): items = [items]
-                
-                df = pd.DataFrame(items)
-                st.dataframe(df, use_container_width=True)
-                
-                with st.expander("원본 JSON 데이터 보기"):
-                    st.json(items)
-        except Exception as e:
-            st.error(f"파이썬 통신 에러: {e}")
+    else:
+        url = "https://apis.data.go.kr/B551011/GoCamping/searchList"
+        korean_name_map = {"충북": "충청북도", "충남": "충청남도", "경북": "경상북도", "경남": "경상남도", "전북": "전라북도", "전남": "전라남도"}
+        full_area = korean_name_map.get(a_name, a_name)
+        keyword = full_area if s_name == "전체" else f"{full_area} {s_name}"
+        params = {"serviceKey": public_api_key, "numOfRows": "50", "pageNo": "1", "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "keyword": keyword}
+        try:
+            res = requests.get(url, params=params, timeout=10)
+            if not res.text.strip().startswith('{'): return []
+            items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
+            if isinstance(items, dict): items = [items]
+            for item in items:
+                if item.get('facltNm'): places.append({"장소명": item.get('facltNm'), "주소": item.get('addr1', '주소 미상')})
+        except: pass
+            
+    return places
 
-# 2) 전국 캠핑장 호출
-if col2.button("⛺ 2. 전국 캠핑장 100개 가져오기", use_container_width=True):
-    with st.spinner("전국 캠핑장 데이터 호출 중..."):
-        url = f"https://apis.data.go.kr/B551011/GoCamping/basedList?serviceKey={public_api_key}&numOfRows=100&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json"
-        
-        try:
-            res = requests.get(url, timeout=15)
-            raw_text = res.text.strip()
-            
-            st.subheader("응답 결과")
-            if not raw_text.startswith('{'):
-                st.error(f"서버 에러 발생 [HTTP {res.status_code}]\n\n{raw_text[:500]}")
-            else:
-                st.success("✅ 2번 캠핑장 통신 성공!")
-                items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
-                if isinstance(items, dict): items = [items]
-                
-                df = pd.DataFrame(items)
-                st.dataframe(df, use_container_width=True)
-                
-                with st.expander("원본 JSON 데이터 보기"):
-                    st.json(items)
-        except Exception as e:
-            st.error(f"파이썬 통신 에러: {e}")
+def scrape_web_info(keyword):
+    scraped_data = []
+    try:
+        clean_keyword = urllib.parse.quote(f"{keyword} 후기 OR 리뷰")
+        url = f"https://news.google.com/rss/search?q={clean_keyword}&hl=ko&gl=KR&ceid=KR:ko"
+        res = requests.get(url, headers=headers, timeout=5)
+        soup = BeautifulSoup(res.text, "html.parser")
+        for item in soup.find_all("item")[:7]: scraped_data.append(item.title.text)
+    except: pass
+    return "\n".join(scraped_data) if scraped_data else "관련 검색 결과가 부족합니다."
 
-# 3) 전국 관광사진 호출
-if col3.button("📸 3. 전국 관광사진 100개 가져오기", use_container_width=True):
-    with st.spinner("전국 관광사진 데이터 호출 중..."):
-        url = f"https://apis.data.go.kr/B551011/PhotoGalleryService1/galleryList1?serviceKey={public_api_key}&numOfRows=100&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json&arrange=A"
-        
-        try:
-            res = requests.get(url, timeout=15)
-            raw_text = res.text.strip()
+def get_exact_photo(keyword):
+    url = "https://apis.data.go.kr/B551011/PhotoGalleryService1/gallerySearchList1"
+    params = {"serviceKey": public_api_key, "numOfRows": "2", "pageNo": "1", "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "keyword": keyword}
+    try:
+        res = requests.get(url, params=params, timeout=10)
+        if not res.text.strip().startswith('{'): return []
+        items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
+        if isinstance(items, dict): items = [items]
+        return [p.get('galWebImageUrl', '') for p in items if p.get('galWebImageUrl')]
+    except: return []
+
+# ==========================================
+# 2. 사이드바 설정
+# ==========================================
+with st.sidebar:
+    st.header("⚙️ 검색 설정")
+    post_type = st.radio("어떤 주제로 포스팅할까요?", ["⛺ 캠핑장", "📸 여행지/관광지"]) # 캠핑장을 기본값으로 변경
+    st.divider()
+    
+    area_options = {
+        "서울": "1", "인천": "2", "대전": "3", "대구": "4", "광주": "5", "부산": "6", "울산": "7", "세종": "8", 
+        "경기": "31", "강원": "32", "충북": "33", "충남": "34", "경북": "35", "경남": "36", "전북": "37", "전남": "38", "제주": "39"
+    }
+    selected_area = st.selectbox("1. 광역시/도를 선택하세요:", list(area_options.keys()))
+    area_code = area_options[selected_area]
+    
+    sigungu_options = get_sigungu(public_api_key, area_code)
+    selected_sigungu = st.selectbox("2. 시/군/구를 선택하세요:", list(sigungu_options.keys()))
+    sigungu_code = sigungu_options[selected_sigungu]
+
+# ==========================================
+# 3. 메인 로직
+# ==========================================
+display_region = f"{selected_area} {selected_sigungu if selected_sigungu != '전체' else ''}".strip()
+st.subheader(f"📌 {display_region} {post_type.split(' ')[1]} 리스트")
+
+with st.spinner("데이터를 가져오는 중입니다..."):
+    place_list = fetch_places(post_type, area_code, selected_area, sigungu_code, selected_sigungu)
+
+if not place_list:
+    if "캠핑장" in post_type:
+        st.info("조건에 맞는 캠핑장이 없습니다. 다른 지역을 선택해 보세요.")
+else:
+    df = pd.DataFrame(place_list)
+    df.index = df.index + 1
+    st.dataframe(df, use_container_width=True)
+    st.divider()
+    
+    options = {f"{p['장소명']} ({p['주소']})": p for p in place_list}
+    selected_label = st.selectbox("📝 위 표에서 분석할 장소 1곳을 선택하세요:", list(options.keys()))
+    target_name = options[selected_label]['장소명']
+    target_addr = options[selected_label]['주소']
+    
+    if st.button("✨ 이 장소로 심층 분석 블로그 자동 작성", type="primary", use_container_width=True):
+        with st.spinner(f"[{target_name}] 웹 후기를 긁어모아 블로그 글을 작성 중입니다... ✍️"):
+            web_info = scrape_web_info(target_name)
+            photos = get_exact_photo(target_name)
             
-            st.subheader("응답 결과")
-            if not raw_text.startswith('{'):
-                st.error(f"서버 에러 발생 [HTTP {res.status_code}]\n\n{raw_text[:500]}")
-            else:
-                st.success("✅ 3번 사진 통신 성공!")
-                items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
-                if isinstance(items, dict): items = [items]
-                
-                df = pd.DataFrame(items)
-                st.dataframe(df, use_container_width=True)
-                
-                with st.expander("원본 JSON 데이터 보기"):
-                    st.json(items)
-        except Exception as e:
-            st.error(f"파이썬 통신 에러: {e}")
+            genai.configure(api_key=gemini_api_key)
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            prompt = f"""당신은 국내 여행/캠핑 전문 파워 블로거입니다. 타겟 장소는 [{target_name}](위치: {target_addr}) 입니다.
+            [웹 후기 텍스트]\n{web_info}
+            위 후기를 바탕으로, '{target_name}' 한 곳만 깊이 있게 분석하는 네이버 블로그 포스팅을 작성하세요.
+            사진1: ![풍경1]({photos[0] if len(photos) > 0 else ''})
+            사진2: ![풍경2]({photos[1] if len(photos) > 1 else ''})
+            마지막엔 [바쁜 분들을 위한 3줄 요약]을 추가하고, 이모지(이모티콘)와 별표(*)는 절대 사용하지 마세요."""
+            try:
+                response = model.generate_content(prompt)
+                st.subheader(f"📝 [{target_name}] 심층 포스팅 완료!")
+                with st.container(border=True):
+                    st.markdown(response.text.replace('*', ''))
+            except Exception as e: st.error(f"작성 오류: {e}")
