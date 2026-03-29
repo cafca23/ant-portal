@@ -15,7 +15,7 @@ st.write("원하는 지역의 관광지/캠핑장을 고르면, AI가 실제 후
 st.divider()
 
 try:
-    public_api_key = st.secrets["GOV_API_KEY"].strip()
+    public_api_key = st.secrets["GOV_API_KEY"].strip() # 이름 GOV_API_KEY로 바꾸셨다면 GOV_API_KEY로 맞춰주세요!
     gemini_api_key = st.secrets["GEMINI_API_KEY"].strip()
 except KeyError:
     st.error("🚨 .streamlit/secrets.toml 파일에 API 키를 설정해주세요!")
@@ -24,11 +24,12 @@ except KeyError:
 headers = {'User-Agent': 'Mozilla/5.0'}
 
 # ==========================================
-# 1. 통신 함수들 (안전 모드 적용)
+# 1. 통신 함수들 (KorService2 최신 주소 적용)
 # ==========================================
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_sigungu(api_key, a_code):
-    url = "https://apis.data.go.kr/B551011/KorService1/areaCode1"
+    # 💡 KorService1 -> KorService2 로 주소 업그레이드!
+    url = "https://apis.data.go.kr/B551011/KorService2/areaCode1"
     params = {"serviceKey": api_key, "numOfRows": "50", "pageNo": "1", "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "areaCode": a_code}
     try:
         res = requests.get(url, params=params, timeout=10)
@@ -46,13 +47,14 @@ def fetch_places(p_type, a_code, a_name, s_code, s_name):
     places = []
     
     if "여행지" in p_type:
-        url = "https://apis.data.go.kr/B551011/KorService1/areaBasedList1"
+        # 💡 KorService1 -> KorService2 로 주소 업그레이드!
+        url = "https://apis.data.go.kr/B551011/KorService2/areaBasedList1"
         params = {"serviceKey": public_api_key, "numOfRows": "50", "pageNo": "1", "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "listYN": "Y", "arrange": "A", "contentTypeId": "12", "areaCode": a_code}
         if s_code: params["sigunguCode"] = s_code
         try:
             res = requests.get(url, params=params, timeout=10)
             if not res.text.strip().startswith('{'): 
-                st.error("🚨 [안내] 관광지 API(KorService1) 권한이 없거나 동기화 대기 중(1~2시간)입니다. 먼저 '캠핑장' 모드를 이용해 주세요!")
+                st.error("🚨 [안내] 서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.")
                 return []
             items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
             if isinstance(items, dict): items = [items]
@@ -104,7 +106,7 @@ def get_exact_photo(keyword):
 # ==========================================
 with st.sidebar:
     st.header("⚙️ 검색 설정")
-    post_type = st.radio("어떤 주제로 포스팅할까요?", ["⛺ 캠핑장", "📸 여행지/관광지"]) # 캠핑장을 기본값으로 변경
+    post_type = st.radio("어떤 주제로 포스팅할까요?", ["📸 여행지/관광지", "⛺ 캠핑장"]) # 다시 여행지를 기본값으로 돌려놓았습니다!
     st.divider()
     
     area_options = {
@@ -128,8 +130,7 @@ with st.spinner("데이터를 가져오는 중입니다..."):
     place_list = fetch_places(post_type, area_code, selected_area, sigungu_code, selected_sigungu)
 
 if not place_list:
-    if "캠핑장" in post_type:
-        st.info("조건에 맞는 캠핑장이 없습니다. 다른 지역을 선택해 보세요.")
+    st.info(f"조건에 맞는 {post_type.split(' ')[1]} 데이터가 없습니다. 다른 지역을 선택해 보세요.")
 else:
     df = pd.DataFrame(place_list)
     df.index = df.index + 1
