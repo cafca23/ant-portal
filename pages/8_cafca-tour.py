@@ -23,11 +23,11 @@ except KeyError:
 # ==========================================
 col1, col2, col3 = st.columns(3)
 
-# 1) 전국 관광지 호출 (areaBasedList1)
-if col1.button("🗺️ 1. 전국 관광지 100개 가져오기", use_container_width=True):
-    with st.spinner("전국 관광지 데이터 호출 중..."):
-        # 지역 코드(areaCode) 파라미터를 아예 빼버림
-        url = f"https://apis.data.go.kr/B551011/KorService1/areaBasedList1?serviceKey={public_api_key}&numOfRows=100&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json&listYN=Y&arrange=A&contentTypeId=12"
+# 1) 관광지 호출 (areaCode=1 서울 강제 주입)
+if col1.button("🗺️ 1. 관광지 100개 가져오기 (서울 테스트)", use_container_width=True):
+    with st.spinner("관광지 데이터 호출 중..."):
+        # 💡 핵심 해결책: 끝에 &areaCode=1 (서울)을 강제로 넣어서 정부 서버가 뻗지 않게 달래줍니다.
+        url = f"https://apis.data.go.kr/B551011/KorService1/areaBasedList1?serviceKey={public_api_key}&numOfRows=100&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json&listYN=Y&arrange=A&contentTypeId=12&areaCode=1"
         
         try:
             res = requests.get(url, timeout=15)
@@ -37,11 +37,10 @@ if col1.button("🗺️ 1. 전국 관광지 100개 가져오기", use_container_
             if not raw_text.startswith('{'):
                 st.error(f"서버 에러 발생 [HTTP {res.status_code}]\n\n{raw_text[:500]}")
             else:
-                st.success("✅ 통신 성공!")
+                st.success("✅ 1번 관광지 통신 성공!")
                 items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
                 if isinstance(items, dict): items = [items]
                 
-                # 표(데이터프레임)로 예쁘게 출력
                 df = pd.DataFrame(items)
                 st.dataframe(df, use_container_width=True)
                 
@@ -50,10 +49,9 @@ if col1.button("🗺️ 1. 전국 관광지 100개 가져오기", use_container_
         except Exception as e:
             st.error(f"파이썬 통신 에러: {e}")
 
-# 2) 전국 캠핑장 호출 (basedList - 검색어 없는 전체조회)
+# 2) 전국 캠핑장 호출
 if col2.button("⛺ 2. 전국 캠핑장 100개 가져오기", use_container_width=True):
     with st.spinner("전국 캠핑장 데이터 호출 중..."):
-        # searchList(검색) 대신 basedList(기본목록) 사용
         url = f"https://apis.data.go.kr/B551011/GoCamping/basedList?serviceKey={public_api_key}&numOfRows=100&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json"
         
         try:
@@ -64,7 +62,7 @@ if col2.button("⛺ 2. 전국 캠핑장 100개 가져오기", use_container_widt
             if not raw_text.startswith('{'):
                 st.error(f"서버 에러 발생 [HTTP {res.status_code}]\n\n{raw_text[:500]}")
             else:
-                st.success("✅ 통신 성공!")
+                st.success("✅ 2번 캠핑장 통신 성공!")
                 items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
                 if isinstance(items, dict): items = [items]
                 
@@ -76,10 +74,9 @@ if col2.button("⛺ 2. 전국 캠핑장 100개 가져오기", use_container_widt
         except Exception as e:
             st.error(f"파이썬 통신 에러: {e}")
 
-# 3) 전국 관광사진 호출 (galleryList1 - 검색어 없는 전체조회)
+# 3) 전국 관광사진 호출
 if col3.button("📸 3. 전국 관광사진 100개 가져오기", use_container_width=True):
     with st.spinner("전국 관광사진 데이터 호출 중..."):
-        # gallerySearchList1(검색) 대신 galleryList1(기본목록) 사용
         url = f"https://apis.data.go.kr/B551011/PhotoGalleryService1/galleryList1?serviceKey={public_api_key}&numOfRows=100&pageNo=1&MobileOS=ETC&MobileApp=App&_type=json&arrange=A"
         
         try:
@@ -90,7 +87,7 @@ if col3.button("📸 3. 전국 관광사진 100개 가져오기", use_container_
             if not raw_text.startswith('{'):
                 st.error(f"서버 에러 발생 [HTTP {res.status_code}]\n\n{raw_text[:500]}")
             else:
-                st.success("✅ 통신 성공!")
+                st.success("✅ 3번 사진 통신 성공!")
                 items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
                 if isinstance(items, dict): items = [items]
                 
