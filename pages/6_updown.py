@@ -17,7 +17,6 @@ warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 model = genai.GenerativeModel('gemini-2.5-flash')
 
-# 💡 텔레그램 암호키 불러오기 (secrets.toml에 이미 세팅됨)
 TELEGRAM_BOT_TOKEN = st.secrets.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID", "")
 
@@ -31,7 +30,6 @@ st.title("🎢 데일리 급등락 스캐너 & 심층 보고서")
 st.write("10% 이상 움직인 종목을 스캔하여 블로그용 보고서를 만들고, 텔레그램에는 핵심 요약만 날립니다.")
 st.divider()
 
-# 💡 텔레그램으로 메시지를 쏘는 핵심 배관 함수
 def send_telegram_message(text):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return False
@@ -40,7 +38,7 @@ def send_telegram_message(text):
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": text,
-        "parse_mode": "Markdown" # 💡 굵은 글씨 등 가독성을 위해 마크다운 모드 사용
+        "parse_mode": "Markdown" 
     }
     
     try:
@@ -49,14 +47,9 @@ def send_telegram_message(text):
     except:
         return False
 
-# 💡 [필살기] AI가 쓴 긴 글에서 텔레그램용 핵심만 발라내는 함수
 def extract_telegram_summary(full_text, stock_name, change_pct):
-    # 텔레그램용 다이어트 메시지 구성
-    # 도입부에 종목명과 변동률을 굵게 표시하여 시선 강탈!
     summary = f"🚨 **[긴급 요약] {stock_name} 금일 {change_pct:+.2f}% 급변동 요인**\n\n"
     
-    # AI가 쓴 글에서 각 섹션의 내용만 정규식으로 추출
-    # 2. 기업소개, 3. 변동원인, 4. 전망, 5. 찐속마음만 가져옴
     sections = {
         "🏢 [기업 소개]": r"■ 2\..*?\(3줄 요약\)\n(.*?)\n\n■ 3\.",
         "❓ [주가 변동 원인]": r"■ 3\..*?원인 분석\n(.*?)\n\n■ 4\.",
@@ -69,13 +62,13 @@ def extract_telegram_summary(full_text, stock_name, change_pct):
         match = re.search(regex, full_text, re.DOTALL)
         if match:
             content = match.group(1).strip()
-            # AI가 이모티콘을 안 쓰더라도 가독성을 위해 헤더에 이모티콘 추가
+            # 💡 [핵심 필터링] AI가 눈치 없이 쓴 괄호 안의 글자 강제 삭제!
+            content = content.replace("(반드시 줄바꿈 후 작성)", "").replace("(-)", "").strip()
             summary += f"{title}\n{content}\n\n"
             found_any = True
             
-    # 마케팅용 블로그 유도 문구 추가
     summary += "👇 **자세한 차트 타점과 4컷 만화는 블로그 본문 확인!**\n"
-    summary += f"[앤트리치 블로그 바로가기](https://대표님의블로그주소.com)" # 💡 대표님 블로그 주소로 수정!
+    summary += f"[앤트리치 블로그 바로가기](https://blog.naver.com/antrich10)"
 
     if not found_any:
         return "보고서 요약 추출 실패. 블로그 본문을 확인해 주세요."
@@ -222,7 +215,7 @@ if st.session_state.scan_results:
                 with st.expander(f"📰 '{clean_symbol}' 수집 뉴스 확인"):
                     st.write(news_text)
 
-                # 💡 [프롬프트 수정] 도입부에 종목명과 변동률(%)을 강제로 박아 넣도록 지시!
+                # 💡 [프롬프트 수정] (반드시 줄바꿈 후 작성) 이라는 문구를 빼고 더 명확하게 지시!
                 prompt = f"""
                 당신은 기업의 수석 투자 분석가입니다.
                 다음은 오늘 시장에서 급등/급락한 [{clean_symbol}] 주식에 대해 실시간으로 수집된 최신 뉴스 데이터입니다.
@@ -232,40 +225,40 @@ if st.session_state.scan_results:
                 이 데이터를 완벽하게 종합 분석해서, 직장 상사(팀장/본부장)에게 보고하는 형식의 심층 분석 보고서를 작성해 주세요.
 
                 [🚨 매우 중요한 작성 규칙 및 양식]
-                1.導入部: 반드시 "본부장님(또는 팀장님), [{clean_symbol}] 금일 주가 {selected_stock['change']:+.2f}% 급변동 핵심 요인 보고드립니다." 로 시작하세요.
-                2. [가독성 강제]: ■ 기호가 붙은 제목을 작성한 후에는 반드시 엔터(Enter)를 쳐서 다음 줄에서 내용을 시작하세요.
+                1. 도입부: 반드시 "본부장님(또는 팀장님), [{clean_symbol}] 금일 주가 {selected_stock['change']:+.2f}% 급변동 핵심 요인 보고드립니다." 로 시작하세요.
+                2. [가독성 강제]: ■ 기호가 붙은 제목을 작성한 후에는 반드시 엔터(Enter)를 쳐서 다음 줄에서 내용을 시작하세요. 단, '(반드시 줄바꿈 후 작성)' 같은 시스템 지시어는 화면에 절대 출력하지 마세요.
                 3. [어투 종결 강제]: 1번~4번 항목까지의 문장 끝에 절대 "~습니다", "~입니다", "~해요"를 사용하지 마세요. 무조건 "~함", "~됨", "~했음", "~예상됨", "~필요함" 형식으로 철저하게 끊어지는 명사형 개조식으로만 작성하세요. 
                 4. [기호 사용 완전 통제]: 글 전체에 걸쳐서 별표(*) 기호와 이모티콘(이모지)은 단 한 개도 절대 사용하지 마세요. 강조할 때는 대괄호([ ])나 꺾쇠(【 】)를 사용하세요.
                 
                 [출력 필수 구성 (순서대로 정확히 출력할 것)]
                 ■ 1. 추천 보고서(블로그) 제목 2가지
-                (반드시 줄바꿈 후 작성)
+                - (보고서 제목 2개 제안)
 
                 ■ 2. [{clean_symbol}] 기업 소개 (3줄 요약)
-                (반드시 줄바꿈 후 작성) 핵심 비즈니스 모델 요약. 반드시 ~함, ~기업임 으로 끝낼 것.
+                - 핵심 비즈니스 모델 요약. 반드시 ~함, ~기업임 으로 끝낼 것.
 
                 ■ 3. [{clean_symbol}] 주가 변동 원인 분석
-                (반드시 줄바꿈 후 작성) 뉴스 기반 팩트 분석. 반드시 ~함, ~됨 으로 끝낼 것.
+                - 뉴스 기반 팩트 분석. 반드시 ~함, ~됨 으로 끝낼 것.
                 
                 ■ 4. 애널리스트 종합 의견 및 향후 전망
-                (반드시 줄바꿈 후 작성) 전문가적 견해 요약. 반드시 ~예상됨, ~필요함 등으로 끝낼 것.
+                - 전문가적 견해 요약. 반드시 ~예상됨, ~필요함 등으로 끝낼 것.
                 
                 ■ 5. 🔥 앤트리치의 찐 속마음 (인간미 코멘트)
-                (반드시 줄바꿈 후 작성) 3040 직장인 개미 투자자에게 빙의해 아주 찰지고 주관적인 코멘트를 2~3줄 작성. AI 느낌을 지우세요.
+                - 3040 직장인 개미 투자자에게 빙의해 아주 찰지고 주관적인 코멘트를 2~3줄 작성. AI 느낌을 지우세요.
 
                 ■ 6. 블로그 확인 링크 안내
-                (반드시 줄바꿈 후 작성) 아래 문장을 그대로 똑같이 출력하세요:
+                - 아래 문장을 그대로 똑같이 출력하세요:
                 "👉 자세한 차트 대응 전략과 4컷 만화는 앤트리치 블로그 본문에서 확인하세요!"
                 (블로그 링크: https://blog.naver.com/antrich10)
 
                 ■ 7. [붙임] 마케팅용 웹툰 스토리보드 기획안 (4~6컷)
-                (반드시 줄바꿈 후 작성) 주식 투자하는 개미(Ant) 캐릭터가 주인공으로 등장하는 대본. 캐릭터 고정 및 대사 삽입 필수.
+                - 주식 투자하는 개미(Ant) 캐릭터가 주인공으로 등장하는 대본. 캐릭터 고정 및 대사 삽입 필수.
                 
                 ■ 8. [🎨 이미지 생성 명령어]
-                (반드시 줄바꿈 후 작성) "위 만화 대본을 바탕으로 이미지 4~6장을 생성해 줘. 합치지 말고 무조건 1컷당 1개의 이미지 파일로 분리해서 생성해 줘. 그리고 반드시 각 이미지 안의 말풍선에 해당 컷의 대사를 텍스트로 넣어줘."
+                - "위 만화 대본을 바탕으로 이미지 4~6장을 생성해 줘. 합치지 말고 무조건 1컷당 1개의 이미지 파일로 분리해서 생성해 줘. 그리고 반드시 각 이미지 안의 말풍선에 해당 컷의 대사를 텍스트로 넣어줘."
                 
                 ■ 9. 블로그용 해시태그
-                (반드시 줄바꿈 후 작성) 쉼표로 구분된 관련 키워드 10개.
+                - 쉼표로 구분된 관련 키워드 10개.
                 """
                 
                 try:
@@ -278,9 +271,7 @@ if st.session_state.scan_results:
                     with st.container(border=True):
                         st.markdown(clean_result_text)
                         
-                    # 💡 [핵심] 대망의 텔레그램 '요약 발송' 파트!
                     with st.spinner("📲 텔레그램 채널로 핵심 요약만 다이어트해서 보내는 중..."):
-                        # 파이썬 함수를 이용해 AI가 쓴 긴 글에서 2,3,4,5번만 발라냄
                         telegram_text = extract_telegram_summary(clean_result_text, clean_symbol, selected_stock['change'])
                         
                         if send_telegram_message(telegram_text):
