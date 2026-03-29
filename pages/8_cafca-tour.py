@@ -15,7 +15,7 @@ st.write("원하는 지역의 관광지/캠핑장을 고르면, AI가 실제 후
 st.divider()
 
 try:
-    public_api_key = st.secrets["GOV_API_KEY"].strip() # 이름 GOV_API_KEY로 바꾸셨다면 GOV_API_KEY로 맞춰주세요!
+    public_api_key = st.secrets["GOV_API_KEY"].strip() # GOV_API_KEY 로 쓰셨다면 맞춰주세요!
     gemini_api_key = st.secrets["GEMINI_API_KEY"].strip()
 except KeyError:
     st.error("🚨 .streamlit/secrets.toml 파일에 API 키를 설정해주세요!")
@@ -24,43 +24,50 @@ except KeyError:
 headers = {'User-Agent': 'Mozilla/5.0'}
 
 # ==========================================
-# 1. 통신 함수들 (KorService2 최신 주소 적용)
+# 1. 통신 함수들 (엑스레이 탑재)
 # ==========================================
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_sigungu(api_key, a_code):
-    # 💡 KorService1 -> KorService2 로 주소 업그레이드!
     url = "https://apis.data.go.kr/B551011/KorService2/areaCode1"
     params = {"serviceKey": api_key, "numOfRows": "50", "pageNo": "1", "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "areaCode": a_code}
     try:
         res = requests.get(url, params=params, timeout=10)
-        if not res.text.strip().startswith('{'): return {"전체": ""}
+        raw_text = res.text.strip()
+        if not raw_text.startswith('{'): 
+            return {"전체": ""}, raw_text # 에러 원문 반환
+        
         items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
         if isinstance(items, dict): items = [items]
         sigungu_dict = {"전체": ""}
         for item in items:
             if item.get('name'): sigungu_dict[item.get('name')] = item.get('code')
-        return sigungu_dict
-    except: return {"전체": ""}
+        return sigungu_dict, "정상"
+    except Exception as e: 
+        return {"전체": ""}, str(e)
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_places(p_type, a_code, a_name, s_code, s_name):
     places = []
     
     if "여행지" in p_type:
-        # 💡 KorService1 -> KorService2 로 주소 업그레이드!
         url = "https://apis.data.go.kr/B551011/KorService2/areaBasedList1"
         params = {"serviceKey": public_api_key, "numOfRows": "50", "pageNo": "1", "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "listYN": "Y", "arrange": "A", "contentTypeId": "12", "areaCode": a_code}
         if s_code: params["sigunguCode"] = s_code
         try:
             res = requests.get(url, params=params, timeout=10)
-            if not res.text.strip().startswith('{'): 
-                st.error("🚨 [안내] 서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.")
+            raw_text = res.text.strip()
+            
+            # 💡 JSON이 아니면 무조건 에러 원문을 화면에 붉게 출력합니다!
+            if not raw_text.startswith('{'): 
+                st.error(f"🚨 [정부 서버 에러 원문]\n\n{raw_text[:500]}")
                 return []
+                
             items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
             if isinstance(items, dict): items = [items]
             for item in items:
                 if item.get('title'): places.append({"장소명": item.get('title'), "주소": item.get('addr1', '주소 미상')})
-        except: pass
+        except Exception as e:
+            st.error(f"파이썬 에러: {e}")
             
     else:
         url = "https://apis.data.go.kr/B551011/GoCamping/searchList"
@@ -70,12 +77,17 @@ def fetch_places(p_type, a_code, a_name, s_code, s_name):
         params = {"serviceKey": public_api_key, "numOfRows": "50", "pageNo": "1", "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "keyword": keyword}
         try:
             res = requests.get(url, params=params, timeout=10)
-            if not res.text.strip().startswith('{'): return []
+            raw_text = res.text.strip()
+            if not raw_text.startswith('{'): 
+                st.error(f"🚨 [정부 서버 에러 원문]\n\n{raw_text[:500]}")
+                return []
+                
             items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
             if isinstance(items, dict): items = [items]
             for item in items:
                 if item.get('facltNm'): places.append({"장소명": item.get('facltNm'), "주소": item.get('addr1', '주소 미상')})
-        except: pass
+        except Exception as e:
+            st.error(f"파이썬 에러: {e}")
             
     return places
 
@@ -106,7 +118,7 @@ def get_exact_photo(keyword):
 # ==========================================
 with st.sidebar:
     st.header("⚙️ 검색 설정")
-    post_type = st.radio("어떤 주제로 포스팅할까요?", ["📸 여행지/관광지", "⛺ 캠핑장"]) # 다시 여행지를 기본값으로 돌려놓았습니다!
+    post_type = st.radio("어떤 주제로 포스팅할까요?", ["📸 여행지/관광지", "⛺ 캠핑장"]) 
     st.divider()
     
     area_options = {
@@ -116,7 +128,12 @@ with st.sidebar:
     selected_area = st.selectbox("1. 광역시/도를 선택하세요:", list(area_options.keys()))
     area_code = area_options[selected_area]
     
-    sigungu_options = get_sigungu(public_api_key, area_code)
+    sigungu_options, sigungu_debug = get_sigungu(public_api_key, area_code)
+    
+    # 시군구 통신 에러가 났을 때 보여주기
+    if sigungu_debug != "정상":
+        st.error(f"시군구 동기화 대기중: {sigungu_debug[:100]}")
+        
     selected_sigungu = st.selectbox("2. 시/군/구를 선택하세요:", list(sigungu_options.keys()))
     sigungu_code = sigungu_options[selected_sigungu]
 
@@ -130,7 +147,7 @@ with st.spinner("데이터를 가져오는 중입니다..."):
     place_list = fetch_places(post_type, area_code, selected_area, sigungu_code, selected_sigungu)
 
 if not place_list:
-    st.info(f"조건에 맞는 {post_type.split(' ')[1]} 데이터가 없습니다. 다른 지역을 선택해 보세요.")
+    st.info(f"데이터가 없습니다. 위 붉은색 에러 창에 'SERVICE_KEY_IS_NOT_REGISTERED_ERROR'가 뜬다면 동기화 진행 중입니다.")
 else:
     df = pd.DataFrame(place_list)
     df.index = df.index + 1
