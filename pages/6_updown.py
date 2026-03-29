@@ -12,10 +12,14 @@ import re
 warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 
 # ==========================================
-# 0. AI 세팅
+# 0. AI 및 텔레그램 세팅
 # ==========================================
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 model = genai.GenerativeModel('gemini-2.5-flash')
+
+# 💡 텔레그램 암호키 불러오기 (secrets.toml에 이미 세팅됨)
+TELEGRAM_BOT_TOKEN = st.secrets.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID", "")
 
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -24,8 +28,25 @@ headers = {
 st.set_page_config(page_title="앤트리치 급등락 스캐너", page_icon="🎢")
 
 st.title("🎢 데일리 급등락 스캐너 & 심층 보고서")
-st.write("10% 이상 움직인 종목을 스캔하고, 직장 상사에게 보고하는 형태의 각 잡힌 종목 분석 보고서를 즉시 생성합니다.")
+st.write("10% 이상 움직인 종목을 스캔하고, 직장 상사에게 보고하는 형태의 각 잡힌 종목 분석 보고서를 즉시 생성하여 텔레그램으로 쏩니다.")
 st.divider()
+
+# 💡 텔레그램으로 메시지를 쏘는 핵심 배관 함수 추가
+def send_telegram_message(text):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return False
+        
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": text
+    }
+    
+    try:
+        res = requests.post(url, json=payload)
+        return res.status_code == 200
+    except:
+        return False
 
 if "scan_results" not in st.session_state:
     st.session_state.scan_results = []
@@ -104,7 +125,6 @@ if st.session_state.scan_results:
     st.divider()
     st.subheader("🎯 스캔 완료! 어떤 종목을 분석 보고서로 만들까요?")
     
-    # 1. 참고용 드롭다운
     options = {}
     for item in st.session_state.scan_results:
         label = f"{item['name']} / 변동: {item['change']:+.2f}%"
@@ -113,11 +133,10 @@ if st.session_state.scan_results:
     selected_label = st.selectbox("스캔된 종목 (참고용):", list(options.keys()))
     selected_stock = options[selected_label]
 
-    # 2. 직접 입력/수정 가능한 텍스트 창
     st.markdown("👇 **검색할 종목 이름을 확인하거나 직접 입력하세요!**")
     target_stock = st.text_input("종목명 입력:", value=selected_stock['name'])
 
-    if st.button("✍️ [급등락 심층 보고서] 출력", type="primary", use_container_width=True):
+    if st.button("✍️ [급등락 심층 보고서] 출력 & 텔레그램 발송", type="primary", use_container_width=True):
         if not target_stock:
             st.warning("종목 이름을 입력해 주세요!")
         else:
@@ -169,6 +188,7 @@ if st.session_state.scan_results:
                 with st.expander(f"📰 '{clean_symbol}' 수집 뉴스 확인"):
                     st.write(news_text)
 
+                # 💡 [프롬프트 수정] 가독성 줄바꿈 강제 및 텔레그램/블로그 유도 멘트 추가
                 prompt = f"""
                 당신은 기업의 수석 투자 분석가입니다.
                 다음은 오늘 시장에서 급등/급락한 [{clean_symbol}] 주식에 대해 실시간으로 수집된 최신 뉴스 데이터입니다.
@@ -179,47 +199,59 @@ if st.session_state.scan_results:
 
                 [🚨 매우 중요한 작성 규칙 및 양식]
                 1. 도입부: 반드시 "본부장님(또는 팀장님), [{clean_symbol}] 금일 주가 급변동 핵심 요인 보고드립니다." 로 시작하세요.
-                2. [어투 종결 강제]: 1번~4번 항목까지의 문장 끝에 절대 "~습니다", "~입니다", "~해요"를 사용하지 마세요. 무조건 "~함", "~됨", "~했음", "~예상됨", "~필요함" 형식으로 철저하게 끊어지는 명사형 개조식으로만 작성하세요. 
-                3. [기호 사용 완전 통제]: 글 전체에 걸쳐서 별표(*) 기호와 이모티콘(이모지)은 단 한 개도 절대 사용하지 마세요. 강조할 때는 대괄호([ ])나 꺾쇠(【 】)를 사용하세요.
+                2. [가독성 강제]: ■ 기호가 붙은 제목을 작성한 후에는 반드시 엔터(Enter)를 쳐서 다음 줄에서 내용을 시작하세요.
+                3. [어투 종결 강제]: 1번~4번 항목까지의 문장 끝에 절대 "~습니다", "~입니다", "~해요"를 사용하지 마세요. 무조건 "~함", "~됨", "~했음", "~예상됨", "~필요함" 형식으로 철저하게 끊어지는 명사형 개조식으로만 작성하세요. 
+                4. [기호 사용 완전 통제]: 글 전체에 걸쳐서 별표 기호와 이모티콘(이모지)은 단 한 개도 절대 사용하지 마세요. 강조할 때는 대괄호([ ])나 꺾쇠(【 】)를 사용하세요.
                 
                 [출력 필수 구성 (순서대로 정확히 출력할 것)]
                 ■ 1. 추천 보고서(블로그) 제목 2가지
-                - (이 보고서를 업로드할 때 사용할 깔끔하고 전문적인 제목 2개를 제안함)
+                (반드시 줄바꿈 후 작성)
 
                 ■ 2. [{clean_symbol}] 기업 소개 (3줄 요약)
-                - (이 기업의 주요 비즈니스 모델, 핵심 제품/서비스, 시장 내 위치 등을 정확히 3줄로 요약할 것. 반드시 ~함, ~기업임 으로 끝낼 것)
+                (반드시 줄바꿈 후 작성) 핵심 비즈니스 모델 요약. 반드시 ~함, ~기업임 으로 끝낼 것.
 
                 ■ 3. [{clean_symbol}] 주가 변동 원인 분석
-                - (수집된 뉴스를 바탕으로 왜 급변동했는지 명확한 팩트 위주로 3~4줄 요약 보고. 반드시 ~함, ~됨 으로 끝낼 것)
+                (반드시 줄바꿈 후 작성) 뉴스 기반 팩트 분석. 반드시 ~함, ~됨 으로 끝낼 것.
                 
                 ■ 4. 애널리스트 종합 의견 및 향후 전망
-                - (단기적인 노이즈인지, 펀더멘털의 구조적 변화인지 전문가적 견해 요약. 반드시 ~예상됨, ~필요함 등으로 끝낼 것)
+                (반드시 줄바꿈 후 작성) 전문가적 견해 요약. 반드시 ~예상됨, ~필요함 등으로 끝낼 것.
                 
                 ■ 5. 🔥 앤트리치의 찐 속마음 (인간미 코멘트)
-                - 보고를 마친 후 분위기를 확 바꿔서 3040 직장인 개미 투자자에게 빙의해 작성하세요. 앞의 딱딱한 개조식을 버리고, "형님들, 오늘 수급 보니까 이거 단타로 접근해야 합니다", "물린 분들 오늘 밤 기도합시다 ㅠㅠ" 등 비표준어, 한탄, 유머, 인터넷 커뮤니티 말투를 섞어서 아주 찰지고 주관적인 코멘트를 2~3줄 툭 던지듯 작성해 주세요. AI가 쓴 기계적인 느낌을 완벽히 지우세요.
+                (반드시 줄바꿈 후 작성) 3040 직장인 개미 투자자에게 빙의해 아주 찰지고 주관적인 코멘트를 2~3줄 작성.
 
-                ■ 6. [붙임] 마케팅용 웹툰 스토리보드 기획안 (4~6컷)
-                - (해당 이슈를 대중에게 쉽게 알리기 위한 4~6컷 웹툰 대본 기획. 각 컷별 이미지 생성 지시문과 한글 대사 필수.)
-                - 💡 [캐릭터 고정]: 블로그의 일관성을 위해, 모든 컷의 영어 이미지 생성 지시문에는 반드시 '주식 투자하는 만화 캐릭터 개미(Ant)'가 주인공으로 등장하도록 묘사할 것.
-                - 💡 [대사 삽입 강제]: 대사는 반드시 이미지 안에 말풍선 텍스트로 포함되도록 지시할 것.
+                ■ 6. 블로그 확인 링크 안내
+                (반드시 줄바꿈 후 작성) 아래 문장을 그대로 똑같이 출력하세요:
+                "👉 자세한 차트 대응 전략과 4컷 만화는 앤트리치 블로그 본문에서 확인하세요!"
+                (블로그 링크: https://대표님의블로그주소.com)
+
+                ■ 7. [붙임] 마케팅용 웹툰 스토리보드 기획안 (4~6컷)
+                (반드시 줄바꿈 후 작성) 주식 투자하는 개미(Ant) 캐릭터가 주인공으로 등장하는 대본.
                 
-                ■ 7. [🎨 이미지 생성 명령어]
-                - 반드시 아래 텍스트를 정확하게 출력할 것.
-                "위 만화 대본을 바탕으로 이미지 4~6장을 생성해 줘. 합치지 말고 무조건 1컷당 1개의 이미지 파일로 분리해서 생성해 줘. 그리고 반드시 각 이미지 안의 말풍선에 해당 컷의 대사를 텍스트로 넣어줘."
+                ■ 8. [🎨 이미지 생성 명령어]
+                (반드시 줄바꿈 후 작성) "위 만화 대본을 바탕으로 이미지 4~6장을 생성해 줘. 합치지 말고 무조건 1컷당 1개의 이미지 파일로 분리해서 생성해 줘. 그리고 반드시 각 이미지 안의 말풍선에 해당 컷의 대사를 텍스트로 넣어줘."
                 
-                ■ 8. 블로그용 해시태그
-                - (쉼표로 구분된 관련 키워드 10개. 가장 마지막에 출력할 것.)
+                ■ 9. 블로그용 해시태그
+                (반드시 줄바꿈 후 작성) 쉼표로 구분된 관련 키워드 10개.
                 """
                 
                 try:
                     script_response = model.generate_content(prompt)
                     
-                    # 💡 [핵심] 파이썬 단에서 물리적 살균: 별표(*)와 이모티콘 완벽 제거
                     clean_result_text = script_response.text.replace('*', '')
                     clean_result_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_result_text)
                     
                     st.success(f"✅ [{clean_symbol}] 분석 보고서 작성이 완료되었습니다!")
                     with st.container(border=True):
                         st.markdown(clean_result_text)
+                        
+                    # 💡 텔레그램 발사 로직!
+                    with st.spinner("📲 텔레그램 채널로 마감 시황을 전송하는 중..."):
+                        if send_telegram_message(clean_result_text):
+                            st.success("🎉 텔레그램 채널에 데일리 급등락 보고서가 성공적으로 발송되었습니다!")
+                        else:
+                            st.error("🚨 텔레그램 전송 실패. secrets.toml의 토큰과 채널 아이디를 확인해 주세요.")
+                            
                 except ResourceExhausted:
                     st.error("🚨 AI 과부하 상태입니다. 딱 1분만 기다리셨다가 다시 눌러주세요!")
+                except Exception as e:
+                    st.error(f"🚨 알 수 없는 오류 발생: {e}")
