@@ -118,38 +118,15 @@ with col2:
 # 3. 한국 KOSPI 공포 지수 (오른쪽 칸)
 with col3:
     try:
-        url_vkospi = "https://kr.investing.com/indices/kospi-volatility"
+        # 💡 핵심: 깐깐한 인베스팅닷컴 대신, 야후 파이낸스의 V-KOSPI(^VKOSPI)를 호출합니다!
+        vkospi = yf.Ticker("^VKOSPI")
+        vkospi_hist = vkospi.history(period="5d")['Close']
+        vkospi_value = float(vkospi_hist.iloc[-1])
+        vkospi_prev = float(vkospi_hist.iloc[-2])
+        vkospi_change = vkospi_value - vkospi_prev
+        vkospi_pct = (vkospi_change / vkospi_prev) * 100
         
-        # 💡 핵심: 보안 요원(Cloudflare)을 속이기 위한 아주 정교한 위조 신분증(Headers)
-        inv_headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Referer': 'https://www.google.com/',
-            'Upgrade-Insecure-Requests': '1',
-            'Connection': 'keep-alive'
-        }
-        
-        # timeout을 넉넉하게 5초로 주고, 속인 헤더를 밀어 넣습니다.
-        res_vkospi = requests.get(url_vkospi, headers=inv_headers, timeout=5)
-        
-        # 만약 인베스팅닷컴이 봇으로 인식해 차단했다면 에러를 발생시킴
-        if res_vkospi.status_code != 200:
-            raise Exception("인베스팅닷컴 보안 차단")
-            
-        soup_vkospi = BeautifulSoup(res_vkospi.text, "html.parser")
-        
-        vkospi_text = soup_vkospi.find(attrs={"data-test": "instrument-price-last"}).text
-        vkospi_value = float(vkospi_text.replace(',', ''))
-        
-        try:
-            vkospi_change = soup_vkospi.find(attrs={"data-test": "instrument-price-change"}).text
-            vkospi_pct = soup_vkospi.find(attrs={"data-test": "instrument-price-change-percent"}).text
-            vkospi_delta_str = f"{vkospi_change} {vkospi_pct}"
-        except:
-            vkospi_delta_str = None
-            vkospi_change = "0"
-            vkospi_pct = "0%"
+        vkospi_delta_str = f"{vkospi_change:+.2f} ({vkospi_pct:+.2f}%)"
         
         if vkospi_value < 15:
             vkospi_state = "🟢 극도의 탐욕 & 매도"
@@ -162,16 +139,15 @@ with col3:
         else:
             vkospi_state = "🔴 역사적 패닉 & 매수"
             
-        st.metric(label="🐯 한국 V-KOSPI (인베스팅닷컴)", value=f"{vkospi_value:.2f}", 
+        st.metric(label="🐯 한국 V-KOSPI (야후 파이낸스)", value=f"{vkospi_value:.2f}", 
                   delta=vkospi_delta_str, delta_color="inverse")
         st.markdown(f"**현재 상태: {vkospi_state}**")
         
-        telegram_data['VKOSPI'] = f"{vkospi_value:.2f} ({vkospi_pct}) | {vkospi_state}"
+        telegram_data['VKOSPI'] = f"{vkospi_value:.2f} ({vkospi_pct:+.2f}%) | {vkospi_state}"
         
     except Exception as e:
-        # 차단당했을 때 화면에 출력될 메시지
-        st.metric(label="🐯 한국 V-KOSPI", value="보안 차단됨")
-        telegram_data['VKOSPI'] = "데이터 수집 실패 (서버 보안 차단)"
+        st.metric(label="🐯 한국 V-KOSPI", value="불러오기 실패")
+        telegram_data['VKOSPI'] = "데이터 수집 실패"
 
     with st.expander("📌 V-KOSPI 해석 가이드"):
         st.markdown("""
