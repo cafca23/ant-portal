@@ -306,8 +306,8 @@ with col_btn2:
         with st.spinner("텔레그램 채널로 전송 중입니다..."):
             try:
                 # secrets.toml에서 텔레그램 키 가져오기
-                bot_token = st.secrets["8611717517:AAE83gKCGaS8Imtx_ZgvxUrr1Jlxn9P-P6M"]
-                chat_id = st.secrets["@antrich10"]
+                bot_token = st.secrets["TELEGRAM_BOT_TOKEN"]
+                chat_id = st.secrets["TELEGRAM_CHAT_ID"]
                 
                 res = send_telegram_message(bot_token, chat_id, msg)
                 
