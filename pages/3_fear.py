@@ -118,15 +118,29 @@ with col2:
 # 3. 한국 KOSPI 공포 지수 (오른쪽 칸)
 with col3:
     try:
-        # 💡 핵심: 깐깐한 인베스팅닷컴 대신, 야후 파이낸스의 V-KOSPI(^VKOSPI)를 호출합니다!
-        vkospi = yf.Ticker("^VKOSPI")
-        vkospi_hist = vkospi.history(period="5d")['Close']
-        vkospi_value = float(vkospi_hist.iloc[-1])
-        vkospi_prev = float(vkospi_hist.iloc[-2])
-        vkospi_change = vkospi_value - vkospi_prev
-        vkospi_pct = (vkospi_change / vkospi_prev) * 100
+        # 💡 핵심: 스트림릿 IP 차단을 피하기 위해 'AllOrigins' 무료 프록시 서버를 경유하여 우회 접속합니다!
+        target_url = "https://kr.investing.com/indices/kospi-volatility"
+        proxy_url = f"https://api.allorigins.win/get?url={target_url}"
         
-        vkospi_delta_str = f"{vkospi_change:+.2f} ({vkospi_pct:+.2f}%)"
+        # 프록시 서버에 요청 (우회 접속)
+        res_vkospi = requests.get(proxy_url, timeout=10)
+        data_json = res_vkospi.json()
+        
+        # 프록시가 물어다 준 인베스팅닷컴의 HTML 원본
+        html_content = data_json['contents']
+        soup_vkospi = BeautifulSoup(html_content, "html.parser")
+        
+        vkospi_text = soup_vkospi.find(attrs={"data-test": "instrument-price-last"}).text
+        vkospi_value = float(vkospi_text.replace(',', ''))
+        
+        try:
+            vkospi_change = soup_vkospi.find(attrs={"data-test": "instrument-price-change"}).text
+            vkospi_pct = soup_vkospi.find(attrs={"data-test": "instrument-price-change-percent"}).text
+            vkospi_delta_str = f"{vkospi_change} {vkospi_pct}"
+        except:
+            vkospi_delta_str = None
+            vkospi_change = "0"
+            vkospi_pct = "0%"
         
         if vkospi_value < 15:
             vkospi_state = "🟢 극도의 탐욕 & 매도"
@@ -139,11 +153,11 @@ with col3:
         else:
             vkospi_state = "🔴 역사적 패닉 & 매수"
             
-        st.metric(label="🐯 한국 V-KOSPI (야후 파이낸스)", value=f"{vkospi_value:.2f}", 
+        st.metric(label="🐯 한국 V-KOSPI (우회 접속)", value=f"{vkospi_value:.2f}", 
                   delta=vkospi_delta_str, delta_color="inverse")
         st.markdown(f"**현재 상태: {vkospi_state}**")
         
-        telegram_data['VKOSPI'] = f"{vkospi_value:.2f} ({vkospi_pct:+.2f}%) | {vkospi_state}"
+        telegram_data['VKOSPI'] = f"{vkospi_value:.2f} ({vkospi_pct}) | {vkospi_state}"
         
     except Exception as e:
         st.metric(label="🐯 한국 V-KOSPI", value="불러오기 실패")
