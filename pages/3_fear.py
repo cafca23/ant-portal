@@ -119,11 +119,24 @@ with col2:
 with col3:
     try:
         url_vkospi = "https://kr.investing.com/indices/kospi-volatility"
+        
+        # 💡 핵심: 보안 요원(Cloudflare)을 속이기 위한 아주 정교한 위조 신분증(Headers)
         inv_headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7'
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Referer': 'https://www.google.com/',
+            'Upgrade-Insecure-Requests': '1',
+            'Connection': 'keep-alive'
         }
-        res_vkospi = requests.get(url_vkospi, headers=inv_headers)
+        
+        # timeout을 넉넉하게 5초로 주고, 속인 헤더를 밀어 넣습니다.
+        res_vkospi = requests.get(url_vkospi, headers=inv_headers, timeout=5)
+        
+        # 만약 인베스팅닷컴이 봇으로 인식해 차단했다면 에러를 발생시킴
+        if res_vkospi.status_code != 200:
+            raise Exception("인베스팅닷컴 보안 차단")
+            
         soup_vkospi = BeautifulSoup(res_vkospi.text, "html.parser")
         
         vkospi_text = soup_vkospi.find(attrs={"data-test": "instrument-price-last"}).text
@@ -156,8 +169,9 @@ with col3:
         telegram_data['VKOSPI'] = f"{vkospi_value:.2f} ({vkospi_pct}) | {vkospi_state}"
         
     except Exception as e:
-        st.metric(label="🐯 한국 V-KOSPI", value="불러오기 실패")
-        telegram_data['VKOSPI'] = "데이터 수집 실패"
+        # 차단당했을 때 화면에 출력될 메시지
+        st.metric(label="🐯 한국 V-KOSPI", value="보안 차단됨")
+        telegram_data['VKOSPI'] = "데이터 수집 실패 (서버 보안 차단)"
 
     with st.expander("📌 V-KOSPI 해석 가이드"):
         st.markdown("""
