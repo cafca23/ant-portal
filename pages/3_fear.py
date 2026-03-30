@@ -302,7 +302,6 @@ with col_btn2:
         msg += f"🥇 금값 : {telegram_data.get('금')}\n"
         msg += f"🪙 비트코인 : {telegram_data.get('BTC')}\n\n"
         msg += f"<i>👉 자세한 시황 분석은 앤트리치 블로그에서 확인하세요!</i>"
-                 (블로그 링크: https://blog.naver.com/antrich10)
 
         with st.spinner("텔레그램 채널로 전송 중입니다..."):
             try:
