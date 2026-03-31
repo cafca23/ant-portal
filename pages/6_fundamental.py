@@ -87,7 +87,7 @@ def get_hot_dart_reports():
                 dart_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}"
 
                 filtered_reports.append({
-                    "회사명": r.get("corp_nm", ""),
+                    "회사명": r.get("corp_name", ""),
                     "종목코드": r.get("stock_code", ""),
                     "공시제목": title,
                     "제출인": r.get("flr_nm", ""),
