@@ -4,22 +4,34 @@ import urllib.parse
 import pandas as pd
 from bs4 import BeautifulSoup
 import google.generativeai as genai
+import re  # 💡 이모티콘 및 기호 살균을 위한 정규식 모듈 추가
+import warnings
+
+warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 
 # ==========================================
-# 0. 초기 세팅
+# 0. 초기 세팅 (Tier 1 무제한 엔진 장착)
 # ==========================================
 st.set_page_config(page_title="주말 나들이 & 캠핑 봇", page_icon="🏕️", layout="wide")
 
-st.title("🏕️ 주말 어디 가지? (나들이+캠핑 딥다이브 봇)")
-st.write("원하는 지역의 관광지/캠핑장을 고르면, AI가 실제 후기를 분석해 파워 블로그를 작성해 줍니다.")
+st.title("🏕️ 주말 어디 가지? (나들이+캠핑 딥다이브 봇 V4 Pro)")
+st.write("원하는 지역의 관광지/캠핑장을 고르면, AI가 실제 후기를 분석해 시원시원한 가독성의 파워 블로그를 작성해 줍니다.")
 st.divider()
 
 try:
-    public_api_key = st.secrets["GOV_API_KEY"].strip() # GOV_API_KEY 로 쓰셨다면 맞춰주세요!
+    public_api_key = st.secrets["GOV_API_KEY"].strip() 
     gemini_api_key = st.secrets["GEMINI_API_KEY"].strip()
 except KeyError:
     st.error("🚨 .streamlit/secrets.toml 파일에 API 키를 설정해주세요!")
     st.stop()
+
+# 💡 고도화 1: 무제한 API에 맞춘 AI 두뇌 세팅 (출력 한도 8000 상향)
+genai.configure(api_key=gemini_api_key)
+generation_config = {
+    "temperature": 0.7,
+    "max_output_tokens": 8000,
+}
+model = genai.GenerativeModel('gemini-2.5-flash', generation_config=generation_config)
 
 headers = {'User-Agent': 'Mozilla/5.0'}
 
@@ -34,7 +46,7 @@ def get_sigungu(api_key, a_code):
         res = requests.get(url, params=params, timeout=10)
         raw_text = res.text.strip()
         if not raw_text.startswith('{'): 
-            return {"전체": ""}, raw_text # 에러 원문 반환
+            return {"전체": ""}, raw_text 
         
         items = res.json().get('response', {}).get('body', {}).get('items', {}).get('item', [])
         if isinstance(items, dict): items = [items]
@@ -57,7 +69,6 @@ def fetch_places(p_type, a_code, a_name, s_code, s_name):
             res = requests.get(url, params=params, timeout=10)
             raw_text = res.text.strip()
             
-            # 💡 JSON이 아니면 무조건 에러 원문을 화면에 붉게 출력합니다!
             if not raw_text.startswith('{'): 
                 st.error(f"🚨 [정부 서버 에러 원문]\n\n{raw_text[:500]}")
                 return []
@@ -130,7 +141,6 @@ with st.sidebar:
     
     sigungu_options, sigungu_debug = get_sigungu(public_api_key, area_code)
     
-    # 시군구 통신 에러가 났을 때 보여주기
     if sigungu_debug != "정상":
         st.error(f"시군구 동기화 대기중: {sigungu_debug[:100]}")
         
@@ -160,21 +170,36 @@ else:
     target_addr = options[selected_label]['주소']
     
     if st.button("✨ 이 장소로 심층 분석 블로그 자동 작성", type="primary", use_container_width=True):
-        with st.spinner(f"[{target_name}] 웹 후기를 긁어모아 블로그 글을 작성 중입니다... ✍️"):
+        with st.spinner(f"[{target_name}] 웹 후기를 긁어모아 블로그 글을 작성 중입니다... ✍️ (무제한 엔진 가동)"):
             web_info = scrape_web_info(target_name)
             photos = get_exact_photo(target_name)
             
-            genai.configure(api_key=gemini_api_key)
-            model = genai.GenerativeModel('gemini-2.5-flash')
             prompt = f"""당신은 국내 여행/캠핑 전문 파워 블로거입니다. 타겟 장소는 [{target_name}](위치: {target_addr}) 입니다.
-            [웹 후기 텍스트]\n{web_info}
+            
+            [웹 후기 텍스트]
+            {web_info}
+            
             위 후기를 바탕으로, '{target_name}' 한 곳만 깊이 있게 분석하는 네이버 블로그 포스팅을 작성하세요.
-            사진1: ![풍경1]({photos[0] if len(photos) > 0 else ''})
-            사진2: ![풍경2]({photos[1] if len(photos) > 1 else ''})
-            마지막엔 [바쁜 분들을 위한 3줄 요약]을 추가하고, 이모지(이모티콘)와 별표(*)는 절대 사용하지 마세요."""
+            
+            [🚨 매우 중요한 작성 규칙]
+            1. 글의 흐름 중간에 어울리는 위치를 찾아 반드시 아래의 사진 태그 두 개를 정확히 삽입하세요:
+               사진1: ![풍경1]({photos[0] if len(photos) > 0 else ''})
+               사진2: ![풍경2]({photos[1] if len(photos) > 1 else ''})
+            2. 마지막엔 [바쁜 분들을 위한 3줄 요약]을 추가하세요.
+            3. 기호 통제: 글 전체에 걸쳐 이모지(이모티콘)와 별표(*)는 단 한 개도 절대 사용하지 마세요.
+            4. [줄바꿈 강제]: 가독성을 위해 본문을 작성할 때 문장이 마침표(.)로 끝나면, 무조건 줄바꿈(엔터)을 하여 다음 내용이 새로운 줄에서 시작되도록 하세요.
+            """
+            
             try:
                 response = model.generate_content(prompt)
-                st.subheader(f"📝 [{target_name}] 심층 포스팅 완료!")
+                st.subheader(f"📝 [{target_name}] 무제한 엔진 심층 포스팅 완료!")
+                
                 with st.container(border=True):
-                    st.markdown(response.text.replace('*', ''))
-            except Exception as e: st.error(f"작성 오류: {e}")
+                    # 💡 [핵심] 파이썬 물리적 살균 및 100% 강제 줄바꿈
+                    clean_text = response.text.replace("*", "")
+                    clean_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_text)
+                    clean_text = clean_text.replace(". ", ".\n\n")
+                    
+                    st.markdown(clean_text)
+            except Exception as e: 
+                st.error(f"작성 오류: {e}")
