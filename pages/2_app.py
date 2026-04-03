@@ -3,7 +3,6 @@ import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
 import warnings
-from google.api_core.exceptions import ResourceExhausted
 import urllib.request
 import urllib.parse
 import json
@@ -12,66 +11,98 @@ import re
 warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 
 # ==========================================
-# 0. AI 세팅
+# 0. AI 세팅 (Tier 1 무제한 엔진 장착)
 # ==========================================
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel('gemini-2.5-flash')
+
+# 💡 고도화 1: 10컷 만화 + 심층 분석을 한 번에 뽑기 위한 넉넉한 출력량 세팅
+generation_config = {
+    "temperature": 0.7,
+    "max_output_tokens": 8000, 
+}
+model = genai.GenerativeModel('gemini-2.5-flash', generation_config=generation_config)
 
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7'
 }
 
-st.set_page_config(page_title="앤트리치 봇", page_icon="🐜")
-st.title("🐜 앤트리치 종목 심층 분석 봇 (인간미 탑재 & 기호 살균)")
-st.write("실시간 핫스탁을 발굴하고, 직장 상사에게 보고하는 형태의 각 잡힌 종목 분석 보고서를 즉시 생성합니다.")
-
+st.set_page_config(page_title="앤트리치 봇", page_icon="🐜", layout="wide")
+st.title("🐜 앤트리치 종목 심층 분석 봇 V4 (Pro Edition)")
+st.write("유료 결제 전용 무제한 엔진 탑재! 실시간 핫스탁을 발굴하고, 직장 상사에게 보고하는 형태의 각 잡힌 종목 분석 보고서를 즉시 생성합니다.")
 st.divider()
 
-# --- [1단계] 실시간 핫스탁 검색 (듀얼 엔진) ---
+# ==========================================
+# ⚡ 데이터 수집 엔진 (빛의 속도 캐싱 적용)
+# ==========================================
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_hot_news(market_type):
+    hot_news_titles = []
+    if "한국" in market_type:
+        try:
+            client_id = st.secrets["NAVER_CLIENT_ID"]
+            client_secret = st.secrets["NAVER_CLIENT_SECRET"]
+            query = urllib.parse.quote("특징주 OR 상한가 OR 수혜주")
+            url_naver = f"https://openapi.naver.com/v1/search/news.json?query={query}&display=10&sort=sim"
+            req = urllib.request.Request(url_naver)
+            req.add_header("X-Naver-Client-Id", client_id)
+            req.add_header("X-Naver-Client-Secret", client_secret)
+            res = urllib.request.urlopen(req)
+            if res.getcode() == 200:
+                data = json.loads(res.read().decode('utf-8'))
+                for item in data['items']:
+                    clean_title = BeautifulSoup(item['title'], 'html.parser').text
+                    hot_news_titles.append(f"[네이버 속보] {clean_title}")
+        except: pass
+
+    try:
+        search_keyword = "한국 증시 특징주 OR 코스피 특징주 when:1d" if "한국" in market_type else "미국 증시 특징주 OR 서학개미 인기 when:1d"
+        url_google = f"https://news.google.com/rss/search?q={search_keyword}&hl=ko&gl=KR&ceid=KR:ko"
+        res_google = requests.get(url_google, headers=headers)
+        soup = BeautifulSoup(res_google.text, "html.parser")
+        for news in soup.find_all("item")[:10]: 
+            hot_news_titles.append(f"[구글 뉴스] {news.title.text}")
+    except: pass
+    return hot_news_titles
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_stock_news(target_stock):
+    target_news_titles = []
+    try:
+        client_id = st.secrets["NAVER_CLIENT_ID"]
+        client_secret = st.secrets["NAVER_CLIENT_SECRET"]
+        query = urllib.parse.quote(f"{target_stock} 주식 OR 특징주")
+        url_naver = f"https://openapi.naver.com/v1/search/news.json?query={query}&display=10&sort=sim"
+        req = urllib.request.Request(url_naver)
+        req.add_header("X-Naver-Client-Id", client_id)
+        req.add_header("X-Naver-Client-Secret", client_secret)
+        res = urllib.request.urlopen(req)
+        if res.getcode() == 200:
+            data = json.loads(res.read().decode('utf-8'))
+            for item in data['items']:
+                clean_title = BeautifulSoup(item['title'], 'html.parser').text
+                clean_desc = BeautifulSoup(item['description'], 'html.parser').text
+                target_news_titles.append(f"[네이버] 제목: {clean_title} / 요약: {clean_desc}")
+    except: pass
+
+    try:
+        url_target = f"https://news.google.com/rss/search?q={urllib.parse.quote(target_stock)} 주식 when:1d&hl=ko&gl=KR&ceid=KR:ko"
+        res_google = requests.get(url_target, headers=headers)
+        soup = BeautifulSoup(res_google.text, "html.parser")
+        for news in soup.find_all("item")[:10]:
+            target_news_titles.append(f"[구글] 제목: {news.title.text}")
+    except: pass
+    return target_news_titles
+
+# ==========================================
+# --- [1단계] 실시간 핫스탁 검색 ---
+# ==========================================
 st.header("🔍 1. 실시간 특징주 동향 파악")
 market = st.radio("어떤 시장을 검색할까요?", ["한국 증시", "미국 증시"], horizontal=True)
 
-if st.button("특징주 동향 검색하기"):
+if st.button("특징주 동향 검색하기", use_container_width=True):
     with st.spinner("네이버와 구글에서 최신 시장 동향을 취합 중입니다... 잠시만 기다려주세요! 🚀"):
-        hot_news_titles = []
-        
-        # [엔진 1] 한국 증시면 네이버 뉴스 출동!
-        if "한국" in market:
-            try:
-                client_id = st.secrets["NAVER_CLIENT_ID"]
-                client_secret = st.secrets["NAVER_CLIENT_SECRET"]
-                query = urllib.parse.quote("특징주 OR 상한가 OR 수혜주")
-                url_naver = f"https://openapi.naver.com/v1/search/news.json?query={query}&display=10&sort=sim"
-                
-                request = urllib.request.Request(url_naver)
-                request.add_header("X-Naver-Client-Id", client_id)
-                request.add_header("X-Naver-Client-Secret", client_secret)
-                
-                response_naver = urllib.request.urlopen(request)
-                if response_naver.getcode() == 200:
-                    data = json.loads(response_naver.read().decode('utf-8'))
-                    for item in data['items']:
-                        clean_title = BeautifulSoup(item['title'], 'html.parser').text
-                        hot_news_titles.append(f"[네이버 속보] {clean_title}")
-            except Exception as e:
-                pass 
-
-        # [엔진 2] 구글 뉴스 출동! (한국/미국 공통)
-        try:
-            if "한국" in market:
-                search_keyword = "한국 증시 특징주 OR 코스피 특징주 when:1d"
-            else:
-                search_keyword = "미국 증시 특징주 OR 서학개미 인기 when:1d"
-                
-            url_google = f"https://news.google.com/rss/search?q={search_keyword}&hl=ko&gl=KR&ceid=KR:ko"
-            response_google = requests.get(url_google, headers=headers)
-            soup_google = BeautifulSoup(response_google.text, "html.parser")
-            
-            for news in soup_google.find_all("item")[:10]: 
-                hot_news_titles.append(f"[구글 뉴스] {news.title.text}")
-        except Exception as e:
-            pass
+        hot_news_titles = fetch_hot_news(market)
 
         if not hot_news_titles:
             st.error("🚨 서버 통신 지연. 잠시 후 다시 시도해 주세요!")
@@ -90,73 +121,41 @@ if st.button("특징주 동향 검색하기"):
             2. 종목명과 핵심 상승/하락 사유를 개조식(- 함, - 됨)으로 명확히 기재하세요.
             3. 핵심 팩트 및 종목명을 강조할 때는 별표(*) 대신 대괄호([ ])나 꺾쇠(【 】)를 사용하세요.
             4. 글 전체에 걸쳐 별표(*) 기호와 이모티콘(이모지)은 단 한 개도 절대 사용하지 마세요.
+            5. [줄바꿈 강제]: 가독성을 위해 본문을 작성할 때 문장이 마침표(.)로 끝나면, 무조건 줄바꿈(엔터)을 하여 다음 내용이 새로운 줄에서 시작되도록 하세요.
             """
             
             try:
                 list_response = model.generate_content(list_prompt)
-                st.success("✅ 시장 동향 요약 완료!")
+                st.success("✅ 무제한 엔진 가동! 시장 동향 요약 완료!")
                 
                 # 💡 [핵심] 파이썬 물리적 살균 (별표 및 이모티콘 제거)
                 clean_list_text = list_response.text.replace("*", "")
                 clean_list_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_list_text)
                 
                 st.markdown(clean_list_text)
-            except ResourceExhausted:
-                st.error("🚨 앗! AI 과부하 상태입니다. 딱 1분만 이따가 다시 눌러주세요!")
+            except Exception as e:
+                st.error(f"🚨 알 수 없는 오류가 발생했습니다: {e}")
 
 st.divider()
 
+# ==========================================
 # --- [2단계] 포스팅 초안 생성 ---
+# ==========================================
 st.header("✍️ 2. 종목 심층 분석 보고서 생성")
 target_stock = st.text_input("심층 분석할 종목명을 정확하게 입력하세요 (예: 삼성전자, 엔비디아):")
 
-if st.button("종목 분석 보고서 작성 🚀"):
+if st.button("종목 분석 보고서 작성 🚀", use_container_width=True):
     if target_stock == "":
         st.warning("종목 이름을 먼저 입력해 주세요!")
     else:
         with st.spinner(f"[{target_stock}] 관련 데이터를 취합하여 공식 보고서를 작성 중입니다... ✍️"):
-            target_news_titles = []
-            
-            # [엔진 1] 네이버 뉴스 싹쓸이
-            try:
-                client_id = st.secrets["NAVER_CLIENT_ID"]
-                client_secret = st.secrets["NAVER_CLIENT_SECRET"]
-                query = urllib.parse.quote(f"{target_stock} 주식 OR 특징주")
-                url_naver = f"https://openapi.naver.com/v1/search/news.json?query={query}&display=10&sort=sim"
-                
-                request = urllib.request.Request(url_naver)
-                request.add_header("X-Naver-Client-Id", client_id)
-                request.add_header("X-Naver-Client-Secret", client_secret)
-                
-                response_naver = urllib.request.urlopen(request)
-                if response_naver.getcode() == 200:
-                    data = json.loads(response_naver.read().decode('utf-8'))
-                    for item in data['items']:
-                        clean_title = BeautifulSoup(item['title'], 'html.parser').text
-                        clean_desc = BeautifulSoup(item['description'], 'html.parser').text
-                        target_news_titles.append(f"[네이버] 제목: {clean_title} / 요약: {clean_desc}")
-            except Exception as e:
-                pass
-
-            # [엔진 2] 구글 뉴스 싹쓸이
-            try:
-                url_target = f"https://news.google.com/rss/search?q={target_stock} 주식 when:1d&hl=ko&gl=KR&ceid=KR:ko"
-                response_target = requests.get(url_target, headers=headers)
-                soup_target = BeautifulSoup(response_target.text, "html.parser")
-                
-                for news in soup_target.find_all("item")[:10]:
-                    target_news_titles.append(f"[구글] 제목: {news.title.text}")
-            except Exception as e:
-                pass
+            target_news_titles = fetch_stock_news(target_stock)
 
             if not target_news_titles:
                  st.error(f"🚨 '{target_stock}'에 대한 최신 데이터를 찾지 못했습니다. 종목명을 다시 확인해 주세요!")
             else:
                 target_news_text = "\n".join(target_news_titles)
 
-                # ==========================================
-                # 🧠 [핵심] 캐릭터 고정 및 프롬프트 구조 완벽 반영!
-                # ==========================================
                 script_prompt = f"""
                 당신은 기업의 수석 투자 분석가이자 콘텐츠 기획자입니다.
                 다음 수집된 '{target_stock}' 관련 최신 뉴스를 바탕으로, 직장 상사(본부장/팀장)에게 보고하는 비즈니스 톤앤매너를 유지하되 지정된 블로그 포스팅 구조에 맞게 문서를 작성해 주세요.
@@ -169,6 +168,7 @@ if st.button("종목 분석 보고서 작성 🚀"):
                 - 팩트 강조: 주요 수치, 종목명 등 핵심 팩트는 강조 시 별표(*) 대신 대괄호([ ])나 꺾쇠(【 】)를 사용하세요.
                 - 기호 통제: 글 전체에 걸쳐 별표(*) 기호와 이모티콘(이모지)은 단 한 개도 절대 사용하지 마세요.
                 - 도입부: 모든 출력의 시작은 "본부장님, [{target_stock}] 관련 심층 분석 보고드립니다."로 시작하세요.
+                - [줄바꿈 강제]: 가독성을 위해 본문을 작성할 때 문장이 마침표(.)로 끝나면, 무조건 줄바꿈(엔터)을 하여 다음 내용이 새로운 줄에서 시작되도록 하세요.
                 
                 [출력 필수 구성 (순서대로 정확히 지킬 것)]
                 [기본 구성] 10컷 만화 대본
@@ -193,12 +193,12 @@ if st.button("종목 분석 보고서 작성 🚀"):
                 
                 try:
                     script_response = model.generate_content(script_prompt)
-                    st.success(f"✅ [{target_stock}] 심층 분석 보고서 작성이 완료되었습니다!")
+                    st.success(f"✅ 무제한 엔진 가동! [{target_stock}] 심층 분석 보고서 작성이 완료되었습니다!")
                     with st.container(border=True):
                         # 💡 [핵심] 파이썬 물리적 살균 (별표 및 이모티콘 완벽 제거)
                         clean_script_text = script_response.text.replace("*", "")
                         clean_script_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_script_text)
                         
                         st.markdown(clean_script_text)
-                except ResourceExhausted:
-                    st.error("🚨 앗! AI 과부하 상태입니다. 딱 1분만 기다리셨다가 다시 버튼을 눌러주세요!")
+                except Exception as e:
+                    st.error(f"🚨 알 수 없는 오류가 발생했습니다: {e}")
