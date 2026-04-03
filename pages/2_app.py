@@ -128,11 +128,15 @@ if st.button("특징주 동향 검색하기", use_container_width=True):
                 list_response = model.generate_content(list_prompt)
                 st.success("✅ 무제한 엔진 가동! 시장 동향 요약 완료!")
                 
-                # 💡 [핵심] 파이썬 물리적 살균 (별표 및 이모티콘 제거)
-                clean_list_text = list_response.text.replace("*", "")
-                clean_list_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_list_text)
-                
-                st.markdown(clean_list_text)
+             with st.container(border=True):
+                        # 💡 [핵심] 파이썬 물리적 살균 (별표 및 이모티콘 완벽 제거)
+                        clean_script_text = script_response.text.replace("*", "")
+                        clean_script_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_script_text)
+                        
+                        # 👇 [여기에 100% 강제 줄바꿈 코드 추가!] 👇
+                        clean_script_text = clean_script_text.replace(". ", ".\n\n")
+                        
+                        st.markdown(clean_script_text)
             except Exception as e:
                 st.error(f"🚨 알 수 없는 오류가 발생했습니다: {e}")
 
