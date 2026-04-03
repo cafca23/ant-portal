@@ -40,7 +40,7 @@ headers = {'User-Agent': 'Mozilla/5.0'}
 # ==========================================
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_sigungu(api_key, a_code):
-    url = "https://apis.data.go.kr/B551011/KorService2/areaCode1"
+    url = "https://apis.data.go.kr/B551011/KorService1/areaCode1"
     params = {"serviceKey": api_key, "numOfRows": "50", "pageNo": "1", "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "areaCode": a_code}
     try:
         res = requests.get(url, params=params, timeout=10)
@@ -62,7 +62,7 @@ def fetch_places(p_type, a_code, a_name, s_code, s_name):
     places = []
     
     if "여행지" in p_type:
-        url = "https://apis.data.go.kr/B551011/KorService2/areaBasedList1"
+        url = "https://apis.data.go.kr/B551011/KorService1/areaBasedList1"
         params = {"serviceKey": public_api_key, "numOfRows": "50", "pageNo": "1", "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "listYN": "Y", "arrange": "A", "contentTypeId": "12", "areaCode": a_code}
         if s_code: params["sigunguCode"] = s_code
         try:
