@@ -19,7 +19,7 @@ st.write("원하는 지역의 관광지/캠핑장을 고르면, AI가 실제 후
 st.divider()
 
 try:
-    public_api_key = st.secrets["GOV_API_KEY"].strip() 
+    public_api_key = urllib.parse.unquote(st.secrets["GOV_API_KEY"].strip()) 
     gemini_api_key = st.secrets["GEMINI_API_KEY"].strip()
 except KeyError:
     st.error("🚨 .streamlit/secrets.toml 파일에 API 키를 설정해주세요!")
