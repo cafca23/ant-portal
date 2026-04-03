@@ -2,47 +2,49 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
-from google.api_core.exceptions import ResourceExhausted
 import urllib.request
 import urllib.parse
 import json
 import warnings
+import re  # 💡 이모티콘 제거를 위한 정규식 모듈 추가
 
 warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 
 # ==========================================
-# 0. AI 및 위장 신분증 기본 세팅
+# 0. AI 및 위장 신분증 기본 세팅 (Tier 1 무제한 엔진 장착)
 # ==========================================
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel('gemini-2.5-flash')
+
+# 💡 고도화 1: 무제한 API에 맞춘 두뇌 세팅 (출력 한도 대폭 상향)
+generation_config = {
+    "temperature": 0.7,
+    "max_output_tokens": 8000,
+}
+model = genai.GenerativeModel('gemini-2.5-flash', generation_config=generation_config)
 
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7'
 }
 
-st.set_page_config(page_title="앤트리치 종목 이유 판독기", page_icon="🚨")
+st.set_page_config(page_title="앤트리치 종목 이유 판독기", page_icon="🚨", layout="wide")
 
 # ==========================================
 # 🚨 [최종 진화] 암살자 모드 파쇄기 가동! (화면 깜빡임 없이 조용히 지우기)
 # ==========================================
-# 1. 앤트리치 방문증(세션) 발급 확인
 if "passed" not in st.session_state:
     st.session_state.passed = False
 
-# 2. 주소창에 암호가 있으면 방문증에 '합격' 도장을 찍고, 암호를 조용히 지웁니다.
 if st.query_params.get("from") == "blog":
     st.session_state.passed = True
     st.query_params.clear()  
 
 # ==========================================
 
-st.title("🚨 이 종목 왜 상승 / 하락 했지?")
-st.write("실시간 뉴스를 취합하여 해당 종목의 급등락 요인을 3줄 요약 보고서 형태로 제공합니다.")
+st.title("🚨 J.F2.A 종목 이유 판독기 V4 (Pro Edition)")
+st.write("유료 결제 전용 무제한 엔진 탑재! 실시간 뉴스를 취합하여 해당 종목의 급등락 요인을 3줄 요약 보고서 형태로 제공합니다.")
 
-# 💡 사용자 안내 문구
 st.info("💡 참고: 최근 24시간 동안 특별한 뉴스가 없는 종목은 검색 결과가 안 나와요!")
-
 st.divider()
 
 # ==========================================
@@ -79,7 +81,7 @@ def get_stock_reason(stock_keyword):
     # [엔진 2] 구글 뉴스 싹쓸이
     # ----------------------------------------
     try:
-        url_google = f"https://news.google.com/rss/search?q={stock_keyword} 주식 when:1d&hl=ko&gl=KR&ceid=KR:ko"
+        url_google = f"https://news.google.com/rss/search?q={urllib.parse.quote(stock_keyword)} 주식 when:1d&hl=ko&gl=KR&ceid=KR:ko"
         res_google = requests.get(url_google, headers=headers)
         soup_google = BeautifulSoup(res_google.text, "html.parser")
         
@@ -91,7 +93,7 @@ def get_stock_reason(stock_keyword):
     if not news_results:
         return "NO_NEWS"
         
-    # 2. AI에게 분석 지시 (💡 직장 상사 보고용 프롬프트로 완전 개조)
+    # 2. AI에게 분석 지시 (💡 프롬프트 룰 강화)
     news_text = "\n".join(news_results)
     prompt = f"""
     당신은 기업의 수석 투자 분석가입니다.
@@ -104,15 +106,21 @@ def get_stock_reason(stock_keyword):
     [🚨 매우 중요한 작성 규칙 및 양식]
     1. 도입부: 반드시 "본부장님(또는 팀장님), [{stock_keyword}] 최근 주가 변동 핵심 요인 보고드립니다." 로 시작하세요.
     2. 개조식 보고: 불필요한 감정적 서론 없이 바로 1, 2, 3번 번호를 매겨서 이유를 보고하세요. 줄글 대신 끝맺음을 "~함", "~됨", "~전망" 등 비즈니스 개조식으로 간결하게 떨어지게 작성하세요.
-    3. 팩트 강조: 수치, 실적, 공시, 계약명, 관련 기업명 등 보고의 핵심 팩트는 반드시 **굵은 글씨(마크다운)**로 강조하여 가독성을 높이세요.
-    4. 분석가 의견: 마지막 줄에는 "💡 종합 투자의견 및 대응 전략:" 이라는 항목을 달고, 이 이슈가 단기적 테마인지 장기적 펀더멘털 변화인지 애널리스트의 관점을 한 줄로 냉철하게 보고하세요.
+    3. 팩트 강조: 수치, 실적, 공시, 계약명, 관련 기업명 등 보고의 핵심 팩트는 강조할 때 별표(*) 대신 대괄호([ ])나 꺾쇠(【 】)를 사용하세요.
+    4. 기호 통제: 글 전체에 걸쳐 별표(*) 기호와 이모티콘(이모지)은 단 한 개도 절대 사용하지 마세요.
+    5. [줄바꿈 강제]: 가독성을 위해 본문을 작성할 때 문장이 마침표(.)로 끝나면, 무조건 줄바꿈(엔터)을 하여 다음 내용이 새로운 줄에서 시작되도록 하세요.
+    6. 분석가 의견: 마지막 줄에는 "💡 종합 투자의견 및 대응 전략:" 이라는 항목을 달고, 이 이슈가 단기적 테마인지 장기적 펀더멘털 변화인지 애널리스트의 관점을 한 줄로 냉철하게 보고하세요.
     """
     
     try:
         response = model.generate_content(prompt)
-        return response.text
-    except ResourceExhausted:
-        return "ERROR_LIMIT"
+        
+        # 💡 [핵심] 파이썬 물리적 살균 및 100% 강제 줄바꿈 (무료 한도 방어막 제거됨)
+        clean_text = response.text.replace("*", "")
+        clean_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_text)
+        clean_text = clean_text.replace(". ", ".\n\n")
+        
+        return clean_text
     except Exception as e:
         return "ERROR_UNKNOWN"
 
@@ -128,20 +136,16 @@ if st.button("핵심 요인 분석 보고서 출력 🚀", use_container_width=T
     if not stock_name:
         st.warning("종목명을 먼저 입력해 주세요!")
     else:
-        with st.spinner(f"[{stock_name}] 주가 변동의 핵심 데이터를 취합하여 보고서를 작성 중입니다... 🕵️‍♂️"):
+        with st.spinner(f"[{stock_name}] 주가 변동의 핵심 데이터를 취합하여 보고서를 작성 중입니다... 🕵️‍♂️ (무제한 엔진 가동 중)"):
             
             result_text = get_stock_reason(stock_name)
             
-            if result_text == "ERROR_LIMIT":
-                st.error("🚨 앗! AI 과부하 상태입니다. 딱 1분만 기다리셨다가 다시 버튼을 눌러주세요!")
-            elif result_text == "ERROR_NEWS":
-                st.error("🚨 뉴스 데이터를 불러오는 데 실패했습니다.")
-            elif result_text == "NO_NEWS":
+            if result_text == "NO_NEWS":
                 st.info(f"앗! 최근 24시간 동안 [{stock_name}]에 대한 특별한 뉴스가 없습니다. 아직 관련 공시나 이슈가 없습니다.")
             elif result_text == "ERROR_UNKNOWN":
                 st.error("🚨 알 수 없는 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
             else:
-                st.success(f"✅ [{stock_name}] 핵심 요인 분석 보고서 완성!")
+                st.success(f"✅ [{stock_name}] 무제한 엔진(Tier 1) 핵심 요인 분석 보고서 완성!")
                 with st.container(border=True):
                     st.markdown(f"### 📊 [{stock_name}] 주가 변동 요인 보고")
                     st.markdown(result_text)
