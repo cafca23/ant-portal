@@ -15,7 +15,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 # 0. API 및 텔레그램 세팅
 # ==========================================
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-2.5-flash')
 
 TELEGRAM_BOT_TOKEN = st.secrets.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = st.secrets.get("TELEGRAM_CHAT_ID", "")
