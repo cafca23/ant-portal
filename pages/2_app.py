@@ -15,7 +15,6 @@ warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 # ==========================================
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-# 💡 고도화 1: 10컷 만화 + 심층 분석을 한 번에 뽑기 위한 넉넉한 출력량 세팅
 generation_config = {
     "temperature": 0.7,
     "max_output_tokens": 8000, 
@@ -128,15 +127,12 @@ if st.button("특징주 동향 검색하기", use_container_width=True):
                 list_response = model.generate_content(list_prompt)
                 st.success("✅ 무제한 엔진 가동! 시장 동향 요약 완료!")
                 
-             with st.container(border=True):
-                        # 💡 [핵심] 파이썬 물리적 살균 (별표 및 이모티콘 완벽 제거)
-                        clean_script_text = script_response.text.replace("*", "")
-                        clean_script_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_script_text)
-                        
-                        # 👇 [여기에 100% 강제 줄바꿈 코드 추가!] 👇
-                        clean_script_text = clean_script_text.replace(". ", ".\n\n")
-                        
-                        st.markdown(clean_script_text)
+                # 💡 [핵심] 파이썬 물리적 살균 및 100% 강제 줄바꿈
+                clean_list_text = list_response.text.replace("*", "")
+                clean_list_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_list_text)
+                clean_list_text = clean_list_text.replace(". ", ".\n\n")
+                
+                st.markdown(clean_list_text)
             except Exception as e:
                 st.error(f"🚨 알 수 없는 오류가 발생했습니다: {e}")
 
@@ -199,9 +195,10 @@ if st.button("종목 분석 보고서 작성 🚀", use_container_width=True):
                     script_response = model.generate_content(script_prompt)
                     st.success(f"✅ 무제한 엔진 가동! [{target_stock}] 심층 분석 보고서 작성이 완료되었습니다!")
                     with st.container(border=True):
-                        # 💡 [핵심] 파이썬 물리적 살균 (별표 및 이모티콘 완벽 제거)
+                        # 💡 [핵심] 파이썬 물리적 살균 및 100% 강제 줄바꿈
                         clean_script_text = script_response.text.replace("*", "")
                         clean_script_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_script_text)
+                        clean_script_text = clean_script_text.replace(". ", ".\n\n")
                         
                         st.markdown(clean_script_text)
                 except Exception as e:
