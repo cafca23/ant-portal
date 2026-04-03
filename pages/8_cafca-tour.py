@@ -4,7 +4,7 @@ import urllib.parse
 import pandas as pd
 from bs4 import BeautifulSoup
 import google.generativeai as genai
-import re  # 💡 이모티콘 및 기호 살균을 위한 정규식 모듈 추가
+import re
 import warnings
 
 warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
@@ -19,10 +19,11 @@ st.write("원하는 지역의 관광지/캠핑장을 고르면, AI가 실제 후
 st.divider()
 
 try:
-    public_api_key = urllib.parse.unquote(st.secrets["GOV_API_KEY"].strip()) 
+    # 💡 [방어막 1] 정부 API 키 이중 인코딩 완벽 방어 (unquote 적용)
+    public_api_key = urllib.parse.unquote(st.secrets["GOV_API_KEY"].strip())
     gemini_api_key = st.secrets["GEMINI_API_KEY"].strip()
 except KeyError:
-    st.error("🚨 .streamlit/secrets.toml 파일에 API 키를 설정해주세요!")
+    st.error("🚨 Streamlit Cloud 설정(Settings) -> Secrets 에 API 키를 입력해주세요!")
     st.stop()
 
 # 💡 고도화 1: 무제한 API에 맞춘 AI 두뇌 세팅 (출력 한도 8000 상향)
@@ -40,6 +41,7 @@ headers = {'User-Agent': 'Mozilla/5.0'}
 # ==========================================
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_sigungu(api_key, a_code):
+    # 💡 [방어막 2] 주소창 버전 오류 수정 (KorService2 -> KorService1)
     url = "https://apis.data.go.kr/B551011/KorService1/areaCode1"
     params = {"serviceKey": api_key, "numOfRows": "50", "pageNo": "1", "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "areaCode": a_code}
     try:
@@ -62,6 +64,7 @@ def fetch_places(p_type, a_code, a_name, s_code, s_name):
     places = []
     
     if "여행지" in p_type:
+        # 💡 [방어막 3] 주소창 버전 오류 수정 (KorService2 -> KorService1)
         url = "https://apis.data.go.kr/B551011/KorService1/areaBasedList1"
         params = {"serviceKey": public_api_key, "numOfRows": "50", "pageNo": "1", "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "listYN": "Y", "arrange": "A", "contentTypeId": "12", "areaCode": a_code}
         if s_code: params["sigunguCode"] = s_code
@@ -114,6 +117,7 @@ def scrape_web_info(keyword):
     return "\n".join(scraped_data) if scraped_data else "관련 검색 결과가 부족합니다."
 
 def get_exact_photo(keyword):
+    # 💡 [방어막 4] 사진 API 주소 버전 수정 (PhotoGalleryService1)
     url = "https://apis.data.go.kr/B551011/PhotoGalleryService1/gallerySearchList1"
     params = {"serviceKey": public_api_key, "numOfRows": "2", "pageNo": "1", "MobileOS": "ETC", "MobileApp": "App", "_type": "json", "keyword": keyword}
     try:
@@ -157,7 +161,7 @@ with st.spinner("데이터를 가져오는 중입니다..."):
     place_list = fetch_places(post_type, area_code, selected_area, sigungu_code, selected_sigungu)
 
 if not place_list:
-    st.info(f"데이터가 없습니다. 위 붉은색 에러 창에 'SERVICE_KEY_IS_NOT_REGISTERED_ERROR'가 뜬다면 동기화 진행 중입니다.")
+    st.info(f"데이터가 없습니다. 위 붉은색 에러 창에 'SERVICE_KEY_IS_NOT_REGISTERED_ERROR'가 뜬다면 동기화 진행 중입니다. (1~2시간 소요)")
 else:
     df = pd.DataFrame(place_list)
     df.index = df.index + 1
