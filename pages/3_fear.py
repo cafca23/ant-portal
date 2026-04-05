@@ -3,6 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 import yfinance as yf
 import warnings
+import pandas as pd
 
 warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 
@@ -29,7 +30,7 @@ st.write("투자의 나침반! 현재 시장의 분위기를 한눈에 파악하
 st.divider()
 
 # ==========================================
-# [상단] 3대 지표 (VIX, CNN, KOSPI)
+# [상단] 3대 지표 (VIX, CNN, KOSPI 이격도)
 # ==========================================
 col1, col2, col3 = st.columns(3)
 
@@ -109,40 +110,49 @@ with col2:
         - **55 ~ 75 (안정 & 매도)** : 수익 소문이 돌며 대중의 매수세가 몰리는 구간
         """)
 
-# 3. 한국 코스피(KOSPI) 지수 (오류 없는 대체재)
+# 3. 한국 KOSPI 이격도 심리 지수 (완벽 이식 완료)
 with col3:
     try:
         kospi = yf.Ticker("^KS11")
-        kospi_hist = kospi.history(period="5d")['Close']
-        kospi_value = float(kospi_hist.iloc[-1])
-        kospi_prev = float(kospi_hist.iloc[-2])
+        ks_hist = kospi.history(period="1mo")['Close']
+        
+        kospi_value = float(ks_hist.iloc[-1])
+        kospi_prev = float(ks_hist.iloc[-2])
         kospi_diff = kospi_value - kospi_prev
         kospi_pct = (kospi_diff / kospi_prev) * 100
         
-        if kospi_pct >= 1.5:
-            kospi_state = "🟢 강력한 상승 (과열 주의)"
-        elif kospi_pct >= 0.5:
-            kospi_state = "🟡 상승장 (안정)"
-        elif kospi_pct > -0.5:
-            kospi_state = "⚪ 횡보장 (눈치 보기)"
-        elif kospi_pct > -1.5:
-            kospi_state = "🟠 하락장 (경계)"
+        # 20일 이동평균선(MA20) 대비 현재 주가의 이격도(괴리율) 계산
+        ma20 = ks_hist.tail(20).mean()
+        disparity = (kospi_value / ma20) * 100
+        
+        if disparity >= 105:
+            ks_state = "🟢 극도의 탐욕 (단기 과열)"
+        elif disparity >= 102:
+            ks_state = "🟡 탐욕 & 안정 (강세장)"
+        elif disparity >= 98:
+            ks_state = "⚪ 중립 & 관망 (보합세)"
+        elif disparity >= 95:
+            ks_state = "🟠 공포 & 줍줍 (단기 침체)"
         else:
-            kospi_state = "🔴 급락장 (공포 심리)"
+            ks_state = "🔴 극도의 공포 (투매/바닥)"
             
-        st.metric(label="🇰🇷 한국 코스피 (KOSPI)", value=f"{kospi_value:,.2f}", 
-                  delta=f"{kospi_diff:,.2f} ({kospi_pct:+.2f}%)")
-        st.markdown(f"**현재 상태: {kospi_state}**")
-        telegram_data['KOSPI'] = f"{kospi_value:,.2f} ({kospi_pct:+.2f}%) | {kospi_state}"
+        sign = "+" if kospi_diff > 0 else ""
+        st.metric(label="🐯 한국 KOSPI (단기 과열/침체 지수)", value=f"{kospi_value:,.2f}", 
+                  delta=f"{sign}{kospi_diff:.2f} ({sign}{kospi_pct:.2f}%)")
+        st.markdown(f"**시장 심리: {ks_state}**")
+        telegram_data['KOSPI'] = f"{kospi_value:,.2f} ({sign}{kospi_pct:.2f}%) | {ks_state}"
         
     except Exception as e:
-        st.metric(label="🇰🇷 한국 코스피", value="불러오기 실패")
+        st.metric(label="🐯 한국 KOSPI 심리 지수", value="불러오기 실패")
         telegram_data['KOSPI'] = "데이터 수집 실패"
 
-    with st.expander("📌 KOSPI 지수 해석 가이드"):
+    with st.expander("📌 KOSPI 이격도(심리) 가이드"):
         st.markdown("""
-        - 한국 증시 전체의 방향성을 보여주는 대표 지수입니다.
-        - 미국 지수(VIX, CNN)와 비교하여 국내 시장의 상대적 강세/약세를 파악하세요.
+        - **극도의 탐욕 (105 이상)** : 20일 평균선 대비 지수가 5% 이상 급등. 단기 고점(조정) 확률이 매우 높으므로 추격 매수 자제 및 차익 실현 고려.
+        - **탐욕 & 안정 (102 ~ 105)** : 매수세가 튼튼하게 받쳐주는 전형적인 우상향 강세장 구간.
+        - **중립 & 관망 (98 ~ 102)** : 시장이 뚜렷한 방향성을 정하지 못하고 눈치를 보는 횡보 구간.
+        - **공포 & 줍줍 (95 ~ 98)** : 악재로 인해 시장 평균치 아래로 지수가 밀린 상태. 관심 종목 분할 매수 시작.
+        - **극도의 공포 (95 미만)** : 20일 평균선 대비 5% 이상 지수가 폭락한 투매장. 대중의 공포를 역이용하는 최고의 바닥 매수 찬스.
         """)
 
 st.divider()
@@ -234,7 +244,7 @@ with col_btn2:
         msg = f"📊 <b>[앤트리치 3대 심리 & Macro 현황판]</b>\n\n"
         msg += f"🇺🇸 미국 VIX : {telegram_data.get('VIX', '데이터 없음')}\n"
         msg += f"🦅 미국 CNN : {telegram_data.get('CNN', '데이터 없음')}\n"
-        msg += f"🇰🇷 한국 코스피 : {telegram_data.get('KOSPI', '데이터 없음')}\n\n"
+        msg += f"🇰🇷 한국 KOSPI : {telegram_data.get('KOSPI', '데이터 없음')}\n\n"
         msg += f"💵 환율(USD/KRW) : {telegram_data.get('환율', '데이터 없음')}\n"
         msg += f"🏛️ 미 10년물 금리 : {telegram_data.get('국채금리', '데이터 없음')}\n"
         msg += f"🛢️ WTI 유가 : {telegram_data.get('WTI', '데이터 없음')}\n"
