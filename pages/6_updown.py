@@ -62,7 +62,6 @@ def extract_telegram_summary(full_text, stock_name, change_pct):
         match = re.search(regex, full_text, re.DOTALL)
         if match:
             content = match.group(1).strip()
-            # 💡 [핵심 필터링] AI가 눈치 없이 쓴 괄호 안의 글자 강제 삭제!
             content = content.replace("(반드시 줄바꿈 후 작성)", "").replace("(-)", "").strip()
             summary += f"{title}\n{content}\n\n"
             found_any = True
@@ -108,6 +107,10 @@ def run_scanner(market, mover_type="gainers"):
             f"https://finance.naver.com/sise/sise_{page_type}.naver?sosok=0",
             f"https://finance.naver.com/sise/sise_{page_type}.naver?sosok=1"
         ]
+        
+        # 💡 [핵심 패치] 강력한 불순물 필터링 키워드 장착
+        exclude_keywords = ['ETN', 'ETF', '스팩', 'KODEX', 'TIGER', 'KINDEX', 'KBSTAR', 'ARIRANG', 'HANARO', 'KOSEF', 'ACE', 'SOL', 'TIMEFOLIO', '레버리지', '인버스', '선물', '블룸버그']
+        
         for url in urls:
             try:
                 res = requests.get(url, headers=headers)
@@ -119,6 +122,11 @@ def run_scanner(market, mover_type="gainers"):
                         name_tag = cols[1].find('a')
                         if name_tag:
                             name = name_tag.text.strip()
+                            
+                            # 🚨 이름에 파생상품/우선주/스팩 키워드가 포함되어 있으면 무조건 스킵!
+                            if any(kw in name for kw in exclude_keywords) or name.endswith('우') or name.endswith('우B') or name.endswith('우(전환)'):
+                                continue
+                                
                             pct_text = cols[4].text.strip().replace('%', '').replace(',', '').replace('+', '')
                             try:
                                 pct = float(pct_text)
@@ -215,7 +223,6 @@ if st.session_state.scan_results:
                 with st.expander(f"📰 '{clean_symbol}' 수집 뉴스 확인"):
                     st.write(news_text)
 
-                # 💡 [프롬프트 수정] (반드시 줄바꿈 후 작성) 이라는 문구를 빼고 더 명확하게 지시!
                 prompt = f"""
                 당신은 기업의 수석 투자 분석가입니다.
                 다음은 오늘 시장에서 급등/급락한 [{clean_symbol}] 주식에 대해 실시간으로 수집된 최신 뉴스 데이터입니다.
