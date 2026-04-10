@@ -8,8 +8,8 @@ import urllib.parse
 import json
 import re
 from datetime import datetime, timedelta
+import warnings # <--- 깔끔하게 기본 모듈 임포트
 
-warnings = st.elements.utils.warnings
 warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 
 # ==========================================
