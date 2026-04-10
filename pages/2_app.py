@@ -15,7 +15,6 @@ warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 # ==========================================
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-# 💡 고도화 1: 10컷 만화 + 심층 분석을 한 번에 뽑기 위한 넉넉한 출력량 세팅
 generation_config = {
     "temperature": 0.7,
     "max_output_tokens": 8000, 
@@ -29,12 +28,37 @@ headers = {
 
 st.set_page_config(page_title="앤트리치 봇", page_icon="🐜", layout="wide")
 st.title("🐜 앤트리치 종목 심층 분석 봇 V4 (Pro Edition)")
-st.write("유료 결제 전용 무제한 엔진 탑재! 실시간 핫스탁을 발굴하고, 직장 상사에게 보고하는 형태의 각 잡힌 종목 분석 보고서를 즉시 생성합니다.")
+st.write("유료 결제 전용 무제한 엔진 탑재! 실시간 검색어가 폭발하는 핫스탁을 발굴하고, 직장 상사에게 보고하는 형태의 각 잡힌 종목 분석 보고서를 즉시 생성합니다.")
 st.divider()
 
 # ==========================================
 # ⚡ 데이터 수집 엔진 (빛의 속도 캐싱 적용)
 # ==========================================
+
+# 💡 [핵심 패치] 네이버 증권 '검색 상위 종목' 실시간 스크래핑 함수 추가
+@st.cache_data(ttl=60, show_spinner=False)
+def get_naver_search_ranks_string():
+    url = "https://finance.naver.com/sise/lastsearch2.naver"
+    rank_text = ""
+    try:
+        res = requests.get(url, headers=headers)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        table = soup.find('table', {'class': 'type_5'})
+        if table:
+            rows = table.find_all('tr')
+            for row in rows:
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    rank_tag = cols[0]
+                    name_tag = cols[1].find('a', class_='tltle')
+                    if name_tag and rank_tag.text.strip().isdigit():
+                        rank = int(rank_tag.text.strip())
+                        name = name_tag.text.strip()
+                        rank_text += f"{rank}위: {name}\n"
+    except Exception as e:
+        pass
+    return rank_text
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def fetch_hot_news(market_type):
     hot_news_titles = []
@@ -97,38 +121,51 @@ def fetch_stock_news(target_stock):
 # ==========================================
 # --- [1단계] 실시간 핫스탁 검색 ---
 # ==========================================
-st.header("🔍 1. 실시간 특징주 동향 파악")
+st.header("🔍 1. 실시간 특징주 동향 파악 (🔥 검색어 랭킹 연동)")
 market = st.radio("어떤 시장을 검색할까요?", ["한국 증시", "미국 증시"], horizontal=True)
 
 if st.button("특징주 동향 검색하기", use_container_width=True):
-    with st.spinner("네이버와 구글에서 최신 시장 동향을 취합 중입니다... 잠시만 기다려주세요! 🚀"):
+    with st.spinner("네이버/구글 뉴스 및 실시간 검색 랭킹 데이터를 융합 중입니다... 잠시만 기다려주세요! 🚀"):
         hot_news_titles = fetch_hot_news(market)
+        
+        # 💡 [핵심] 한국 증시일 경우 실시간 검색 랭킹 데이터를 긁어와 AI에게 주입할 준비를 합니다.
+        search_rank_info = ""
+        if "한국" in market:
+            rank_str = get_naver_search_ranks_string()
+            if rank_str:
+                search_rank_info = f"\n[🔥 현재 네이버 실시간 검색 상위 종목]\n{rank_str}\n"
 
         if not hot_news_titles:
             st.error("🚨 서버 통신 지연. 잠시 후 다시 시도해 주세요!")
         else:
             hot_news_text = "\n".join(hot_news_titles)
 
+            # 💡 AI 프롬프트에 검색 랭킹 기반 최우선 정렬 명령 추가
             list_prompt = f"""
             당신은 기업의 수석 투자 분석가입니다.
-            다음은 수집된 한국/미국 증시의 최근 뉴스 헤드라인입니다.
+            다음은 수집된 한국/미국 증시의 최근 뉴스 헤드라인과 실시간 검색어 데이터입니다.
+            
+            [최근 뉴스 헤드라인]
             {hot_news_text}
             
-            이 뉴스들을 분석하여 현재 시장에서 가장 이슈가 되고 있는 특징주 5개를 도출하여, 직장 상사(팀장/본부장)에게 보고하는 형식으로 간결하게 브리핑해 주세요.
+            {search_rank_info}
+            
+            이 뉴스들과 (제공되었다면) 검색어 순위 데이터를 완벽하게 분석하여, 현재 시장에서 가장 이슈가 되고 있는 특징주 5개를 도출하여 직장 상사(팀장/본부장)에게 보고하는 형식으로 간결하게 브리핑해 주세요.
 
             [🚨 작성 규칙]
             1. 도입부는 "본부장님(팀장님), 금일 시장 주요 특징주 동향 보고드립니다."로 시작하세요.
-            2. 종목명과 핵심 상승/하락 사유를 개조식(- 함, - 됨)으로 명확히 기재하세요.
-            3. 핵심 팩트 및 종목명을 강조할 때는 별표(*) 대신 대괄호([ ])나 꺾쇠(【 】)를 사용하세요.
-            4. 글 전체에 걸쳐 별표(*) 기호와 이모티콘(이모지)은 단 한 개도 절대 사용하지 마세요.
-            5. [줄바꿈 강제]: 가독성을 위해 본문을 작성할 때 문장이 마침표(.)로 끝나면, 무조건 줄바꿈(엔터)을 하여 다음 내용이 새로운 줄에서 시작되도록 하세요.
+            2. [검색 랭킹 최우선]: 한국 증시의 경우, 제공된 [네이버 실시간 검색 상위 종목]에 포함된 종목을 무조건 1순위로 위로 올려서 1~5위를 정렬하세요. 검색어 순위가 높은 종목이 무조건 상단에 와야 합니다.
+            3. 종목명 옆에 괄호로 검색 순위를 반드시 표기하세요. (예: 【삼성전자】 (검색 1위) - ... )
+            4. 종목명과 핵심 상승/하락 사유를 개조식(- 함, - 됨)으로 명확히 기재하세요.
+            5. 핵심 팩트 및 종목명을 강조할 때는 별표(*) 대신 대괄호([ ])나 꺾쇠(【 】)를 사용하세요.
+            6. 글 전체에 걸쳐 별표(*) 기호와 이모티콘(이모지)은 단 한 개도 절대 사용하지 마세요.
+            7. [줄바꿈 강제]: 가독성을 위해 본문을 작성할 때 문장이 마침표(.)로 끝나면, 무조건 줄바꿈(엔터)을 하여 다음 내용이 새로운 줄에서 시작되도록 하세요.
             """
             
             try:
                 list_response = model.generate_content(list_prompt)
-                st.success("✅ 무제한 엔진 가동! 시장 동향 요약 완료!")
+                st.success("✅ 무제한 엔진 가동! 검색 랭킹 기반 시장 동향 요약 완료!")
                 
-                # 💡 [핵심] 파이썬 물리적 살균 (별표 및 이모티콘 제거)
                 clean_list_text = list_response.text.replace("*", "")
                 clean_list_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_list_text)
                 
@@ -195,7 +232,6 @@ if st.button("종목 분석 보고서 작성 🚀", use_container_width=True):
                     script_response = model.generate_content(script_prompt)
                     st.success(f"✅ 무제한 엔진 가동! [{target_stock}] 심층 분석 보고서 작성이 완료되었습니다!")
                     with st.container(border=True):
-                        # 💡 [핵심] 파이썬 물리적 살균 (별표 및 이모티콘 완벽 제거)
                         clean_script_text = script_response.text.replace("*", "")
                         clean_script_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_script_text)
                         
