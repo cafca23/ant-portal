@@ -4,6 +4,7 @@ import google.generativeai as genai
 import time
 import json
 import base64
+import os # 💡 파일 저장을 위한 모듈 추가
 
 # ==========================================
 # 🔑 0단계: 마스터 키 및 환경 세팅
@@ -20,12 +21,31 @@ GOV_URL = base64.b64decode("aHR0cHM6Ly9hcGkub2RjbG91ZC5rci9hcGkvZ292MjQvdjMvc2Vy
 GOV_DETAIL_URL = base64.b64decode("aHR0cHM6Ly93d3cuZ292LmtyL3BvcnRhbC9yY3ZmdnJTdmMvZHRsRXgv").decode()
 
 # ==========================================
+# 💾 특별 추가: 중복 방지 메모리 시스템
+# ==========================================
+SEEN_FILE = "seen_policies.json"
+
+def load_seen_policies():
+    """이미 작성한 정책 리스트를 불러옵니다."""
+    if os.path.exists(SEEN_FILE):
+        with open(SEEN_FILE, 'r', encoding='utf-8') as f:
+            return set(json.load(f))
+    return set()
+
+def save_seen_policy(policy_name):
+    """새로 작성한 정책을 블랙리스트에 추가하여 저장합니다."""
+    seen = load_seen_policies()
+    seen.add(policy_name)
+    with open(SEEN_FILE, 'w', encoding='utf-8') as f:
+        json.dump(list(seen), f, ensure_ascii=False, indent=2)
+
+# ==========================================
 # 🎨 1단계: 웹사이트 화면 꾸미기
 # ==========================================
 st.set_page_config(page_title="J.F2.A 정책 번역기", page_icon="🏛️", layout="wide")
 
 st.title("🏛️ J.F2.A 전 세대 맞춤형 블로그 공장")
-st.markdown("AI 수석 편집장이 최신 정책을 골라 찰진 글을 쓰고, **1컷씩 분리된 완벽한 만화 주문서**까지 뽑아 드립니다.")
+st.markdown("AI 수석 편집장이 최신 정책을 골라 찰진 글을 쓰고, **1컷씩 분리된 완벽한 만화 주문서**까지 뽑아 드립니다. (이미 작성한 글은 자동 패스!)")
 
 # ==========================================
 # ⚙️ 2단계: 핵심 기능 (수집 -> AI 큐레이팅 -> 작문)
@@ -65,7 +85,7 @@ def ai_curator_pick(policies, target_age, count):
     
     prompt = f"""
     당신은 대한민국 최고의 블로그 편집장입니다. 이번 글의 핵심 타겟은 '{target_age}'입니다.
-    아래 100개의 정부 정책 중, 이 타겟이 가장 클릭할 만한(돈이 되는) 정책 딱 {count}개만 골라주세요.
+    아래 제출된 정부 정책 중, 이 타겟이 가장 클릭할 만한(돈이 되는) 정책 딱 {count}개만 골라주세요.
     
     [정책 목록]
     {catalog}
@@ -138,29 +158,44 @@ if st.button("🚀 AI 편집장, 대박 정책 골라와!", type="primary", use_
             status.update(label="수집 에러 발생!", state="error")
             st.error(error)
         else:
-            st.write(f"🧠 스캔 완료! 제미나이 2.5 엔진이 '{target_age}' 맞춤형 정책을 선별 중입니다...")
-            selected_indices, ai_error = ai_curator_pick(policies, target_age, post_count)
+            # 💡 [핵심 패치] 이미 작성한 정책은 리스트에서 완벽히 제외시킴
+            seen_set = load_seen_policies()
+            fresh_policies = [p for p in policies if p['정책명'] not in seen_set]
             
-            if ai_error:
-                status.update(label="AI 편집장 분석 실패", state="error")
-                st.error(ai_error)
-            elif not selected_indices:
-                status.update(label="선별 실패", state="error")
-                st.error("조건에 맞는 정책을 찾지 못했습니다.")
+            if not fresh_policies:
+                status.update(label="새로운 정책 없음!", state="error")
+                st.error("💡 최근 100개의 정책 중 대표님께서 작성하지 않은 새로운 정책이 없습니다! 며칠 뒤에 다시 시도해주세요.")
             else:
-                st.write(f"✅ AI 편집장이 {len(selected_indices)}개의 황금 정책을 픽했습니다!")
+                # 남은 정책 개수가 요청한 개수보다 적을 수 있으므로 보정
+                actual_count = min(post_count, len(fresh_policies))
+                st.write(f"🧠 스캔 완료! 이미 작성한 글을 제외한 {len(fresh_policies)}개의 신규 정책 중 '{target_age}' 맞춤형 {actual_count}개를 선별합니다...")
                 
-                for i, idx in enumerate(selected_indices):
-                    if idx >= len(policies): continue 
-                    
-                    best_policy = policies[idx]
-                    st.write(f"✍️ [{i+1}/{len(selected_indices)}] '{best_policy['정책명']}' 포스팅 & 만화 콘티 작성 중...")
-                    
-                    blog_content = generate_blog_post(best_policy, target_age)
-                    
-                    with st.expander(f"✨ AI 편집장의 선택: {best_policy['정책명']}", expanded=True):
-                        st.markdown(blog_content)
-                        st.caption(f"📍 원본 데이터 확인: {best_policy['상세주소']}")
-                    time.sleep(1) # 부하 방지용 딜레이
+                selected_indices, ai_error = ai_curator_pick(fresh_policies, target_age, actual_count)
                 
-                status.update(label="✅ 오늘의 블로그 원고 및 만화 기획서가 모두 완성되었습니다!", state="complete")
+                if ai_error:
+                    status.update(label="AI 편집장 분석 실패", state="error")
+                    st.error(ai_error)
+                elif not selected_indices:
+                    status.update(label="선별 실패", state="error")
+                    st.error("조건에 맞는 정책을 찾지 못했습니다.")
+                else:
+                    st.write(f"✅ AI 편집장이 {len(selected_indices)}개의 황금 정책을 픽했습니다!")
+                    
+                    for i, idx in enumerate(selected_indices):
+                        if idx >= len(fresh_policies): continue 
+                        
+                        best_policy = fresh_policies[idx]
+                        st.write(f"✍️ [{i+1}/{len(selected_indices)}] '{best_policy['정책명']}' 포스팅 & 만화 콘티 작성 중...")
+                        
+                        blog_content = generate_blog_post(best_policy, target_age)
+                        
+                        with st.expander(f"✨ AI 편집장의 선택: {best_policy['정책명']}", expanded=True):
+                            st.markdown(blog_content)
+                            st.caption(f"📍 원본 데이터 확인: {best_policy['상세주소']}")
+                            
+                        # 💡 글 작성이 완료된 정책은 즉시 블랙리스트(메모리)에 저장
+                        save_seen_policy(best_policy['정책명'])
+                        
+                        time.sleep(1) # 부하 방지용 딜레이
+                    
+                    status.update(label="✅ 오늘의 블로그 원고 및 만화 기획서가 모두 완성되었습니다!", state="complete")
