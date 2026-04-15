@@ -1,8 +1,10 @@
+streamlit
 yfinance
-requests
-beautifulsoup4
-google-generativeai
-matplotlib
-pykrx
-setuptools==69.5.1
+FinanceDataReader
 pandas
+numpy
+plotly
+google-generativeai
+beautifulsoup4
+requests
+deep-translator
