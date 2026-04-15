@@ -1,6 +1,6 @@
 streamlit
 yfinance
-FinanceDataReader
+finance-datareader
 pandas
 numpy
 plotly
@@ -8,3 +8,4 @@ google-generativeai
 beautifulsoup4
 requests
 deep-translator
+finvizfinance
