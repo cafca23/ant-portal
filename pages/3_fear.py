@@ -4,6 +4,8 @@ from bs4 import BeautifulSoup
 import yfinance as yf
 import warnings
 import pandas as pd
+from datetime import datetime
+import plotly.graph_objects as go
 
 warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 
@@ -24,13 +26,20 @@ def send_telegram_message(bot_token, chat_id, message):
 telegram_data = {}
 
 # ==========================================
+# [상단] 타이틀 및 오늘 날짜
+# ==========================================
+# 요일 한글 변환
+days = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
+now = datetime.now()
+today_str = f"{now.year}년 {now.month:02d}월 {now.day:02d}일 {days[now.weekday()]}"
 
 st.title("📊 앤트리치 3대 심리 & 매크로 현황판")
-st.write("투자의 나침반! 현재 시장의 분위기를 한눈에 파악하고 매매 타이밍을 잡으세요.")
+st.markdown(f"<h3 style='color: #38bdf8; margin-top: -10px;'>📅 오늘 날짜: {today_str}</h3>", unsafe_allow_html=True)
+st.write("투자의 나침반! 현재 시장의 분위기(심리)가 실제 주가 차트의 어느 위치에 있는지 직관적으로 파악하세요.")
 st.divider()
 
 # ==========================================
-# [상단] 3대 지표 (VIX, CNN, KOSPI 이격도)
+# [중단 1] 3대 지표 (VIX, CNN, KOSPI 이격도)
 # ==========================================
 col1, col2, col3 = st.columns(3)
 
@@ -64,14 +73,6 @@ with col1:
         st.metric(label="🇺🇸 미국 VIX", value="불러오기 실패")
         telegram_data['VIX'] = "데이터 수집 실패"
 
-    with st.expander("📌 VIX 지수 해석 가이드"):
-        st.markdown("""
-        - **15 미만 (극도의 탐욕 & 매도)** : 하락 우려 없이 대중이 상승에 취해있는 상태
-        - **15 ~ 20 (탐욕 & 매도)** : 경제가 안정적이며 주가가 꾸준히 우상향하는 구간
-        - **20 ~ 25 (중립 & 중립)** : 금리, 전쟁 등 악재 뉴스로 변동성이 커지는 구간
-        - **25 ~ 40 (공포 & 매수)** : 지수 하락이 눈에 띄며 시장에 공포 심리가 확산
-        """)
-
 # 2. 미국 CNN 공포/탐욕 지수
 with col2:
     try:
@@ -102,15 +103,7 @@ with col2:
         st.metric(label="🦅 미국 CNN 지수", value="불러오기 실패")
         telegram_data['CNN'] = "데이터 수집 실패"
 
-    with st.expander("📌 CNN 지수 해석 가이드"):
-        st.markdown("""
-        - **0 ~ 25 (극도의 공포 & 매수)** : 대중의 강력한 투매가 일어나는 최고의 매수 기회
-        - **25 ~ 45 (공포 & 매수)** : 투자자들이 몸을 사리며 현금을 관망하는 구간
-        - **45 ~ 55 (중립 & 중립)** : 수급과 심리가 균형을 이룬 평온한 시장
-        - **55 ~ 75 (안정 & 매도)** : 수익 소문이 돌며 대중의 매수세가 몰리는 구간
-        """)
-
-# 3. 한국 KOSPI 이격도 심리 지수 (완벽 이식 완료)
+# 3. 한국 KOSPI 이격도 심리 지수
 with col3:
     try:
         kospi = yf.Ticker("^KS11")
@@ -121,7 +114,6 @@ with col3:
         kospi_diff = kospi_value - kospi_prev
         kospi_pct = (kospi_diff / kospi_prev) * 100
         
-        # 20일 이동평균선(MA20) 대비 현재 주가의 이격도(괴리율) 계산
         ma20 = ks_hist.tail(20).mean()
         disparity = (kospi_value / ma20) * 100
         
@@ -146,19 +138,48 @@ with col3:
         st.metric(label="🐯 한국 KOSPI 심리 지수", value="불러오기 실패")
         telegram_data['KOSPI'] = "데이터 수집 실패"
 
-    with st.expander("📌 KOSPI 이격도(심리) 가이드"):
-        st.markdown("""
-        - **극도의 탐욕 (105 이상)** : 20일 평균선 대비 지수가 5% 이상 급등. 단기 고점(조정) 확률이 매우 높으므로 추격 매수 자제 및 차익 실현 고려.
-        - **탐욕 & 안정 (102 ~ 105)** : 매수세가 튼튼하게 받쳐주는 전형적인 우상향 강세장 구간.
-        - **중립 & 관망 (98 ~ 102)** : 시장이 뚜렷한 방향성을 정하지 못하고 눈치를 보는 횡보 구간.
-        - **공포 & 줍줍 (95 ~ 98)** : 악재로 인해 시장 평균치 아래로 지수가 밀린 상태. 관심 종목 분할 매수 시작.
-        - **극도의 공포 (95 미만)** : 20일 평균선 대비 5% 이상 지수가 폭락한 투매장. 대중의 공포를 역이용하는 최고의 바닥 매수 찬스.
-        """)
+st.markdown("<br>", unsafe_allow_html=True)
+
+# ==========================================
+# 📈 [중단 2] 미장 벤치마크 지수 차트 (심리-차트 비교용)
+# ==========================================
+st.markdown("### 📈 미국 핵심 지수 현재 위치 (심리 지표와 비교용)")
+st.markdown("위의 **CNN 공포/탐욕 지수**가 실제 주가 차트의 어느 위치(고점/저점)에서 발생하고 있는지 직관적으로 확인하세요.")
+
+try:
+    sp500_hist = yf.Ticker("^GSPC").history(period="1y")
+    nasdaq_hist = yf.Ticker("^IXIC").history(period="1y")
+    
+    c_chart1, c_chart2 = st.columns(2)
+    
+    with c_chart1:
+        fig_sp = go.Figure()
+        fig_sp.add_trace(go.Scatter(x=sp500_hist.index, y=sp500_hist['Close'], mode='lines', name='S&P 500', line=dict(color='#00b0ff', width=2)))
+        
+        # 현재 가격 강조 (빨간 점)
+        current_sp = sp500_hist['Close'].iloc[-1]
+        fig_sp.add_trace(go.Scatter(x=[sp500_hist.index[-1]], y=[current_sp], mode='markers+text', text=[f"{current_sp:,.2f}"], textposition="top left", marker=dict(color='#f85149', size=12), showlegend=False))
+        
+        fig_sp.update_layout(title="S&P 500 지수 (최근 1년)", template="plotly_dark", height=350, margin=dict(l=0, r=0, t=40, b=0))
+        st.plotly_chart(fig_sp, use_container_width=True)
+
+    with c_chart2:
+        fig_nd = go.Figure()
+        fig_nd.add_trace(go.Scatter(x=nasdaq_hist.index, y=nasdaq_hist['Close'], mode='lines', name='NASDAQ', line=dict(color='#e879f9', width=2)))
+        
+        # 현재 가격 강조 (빨간 점)
+        current_nd = nasdaq_hist['Close'].iloc[-1]
+        fig_nd.add_trace(go.Scatter(x=[nasdaq_hist.index[-1]], y=[current_nd], mode='markers+text', text=[f"{current_nd:,.2f}"], textposition="top left", marker=dict(color='#f85149', size=12), showlegend=False))
+        
+        fig_nd.update_layout(title="나스닥 종합지수 (최근 1년)", template="plotly_dark", height=350, margin=dict(l=0, r=0, t=40, b=0))
+        st.plotly_chart(fig_nd, use_container_width=True)
+except Exception as e:
+    st.error("차트 데이터를 불러오는 중 오류가 발생했습니다.")
 
 st.divider()
 
 # ==========================================
-# [하단] 거시경제 (Macro)
+# [하단 1] 거시경제 (Macro)
 # ==========================================
 st.header("🌍 거시경제 (Macro) 핵심 지표")
 col4, col5 = st.columns(2)
