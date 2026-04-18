@@ -7,6 +7,7 @@ import pandas as pd
 from datetime import datetime
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import google.generativeai as genai # 💡 AI 블로그 작성을 위한 모듈 추가
 
 warnings.filterwarnings("ignore", category=UserWarning, module='bs4')
 
@@ -190,3 +191,72 @@ with col_btn2:
             if res.status_code == 200: st.success("✅ 전송 완료!")
             else: st.error("🚨 전송 실패")
         except: st.error("🚨 API 설정 오류")
+
+st.divider()
+
+# ==========================================
+# 🤖 [최하단] AI 시황 블로그 포스팅 자동 작성
+# ==========================================
+st.markdown("### 🤖 앤트리치 AI 시황 블로그 자동 작성")
+if st.button("✨ 오늘의 공포/탐욕 시황 블로그 원고 생성", type="primary", use_container_width=True):
+    with st.spinner("AI 수석 편집장이 시황 데이터를 분석하여 블로그 원고를 작성 중입니다... 🧠"):
+        try:
+            genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+            model = genai.GenerativeModel('gemini-2.5-flash', generation_config={"temperature": 0.7, "max_output_tokens": 4000})
+
+            # 수집된 데이터 문자열 처리
+            vix_str = telegram_data.get('VIX', '데이터 없음')
+            cnn_str = telegram_data.get('CNN', '데이터 없음')
+            kospi_str = telegram_data.get('KOSPI', '데이터 없음')
+            ex_str = telegram_data.get('환율', '데이터 없음')
+            tnx_str = telegram_data.get('국채금리', '데이터 없음')
+
+            prompt = f"""
+            당신은 월스트리트 출신의 전문 투자 분석가이자 주식 블로그 '앤트리치'의 수석 에디터입니다. 
+            아래 수집된 3대 심리 지표를 바탕으로 네이버 블로그용 시황 브리핑을 작성해 주세요.
+
+            [오늘의 심리 & 매크로 팩트 데이터]
+            - 미국 VIX 공포지수: {vix_str}
+            - 미국 CNN 공포탐욕지수: {cnn_str}
+            - 한국 KOSPI 지수/이격도: {kospi_str}
+            - 달러/원 환율: {ex_str}
+            - 미 10년물 국채 금리: {tnx_str}
+
+            [🚨 작성 규칙]
+            1. 어투: 1~4번 항목의 문장 끝은 무조건 "~함", "~됨", "~예상됨" 등 전문적인 보고서체로만 작성할 것.
+            2. 특징: 차트 분석(3번 항목) 시 앤트리치 전용 차트의 "형광 초록색 VIX 점선"의 움직임을 반드시 자연스럽게 언급할 것.
+            3. 기호 통제: 이모지는 제목에만 쓰고 본문(1~4번 항목)에는 절대 쓰지 말 것.
+            4. 가독성: 각 대항목 제목과 본문 내용 사이는 한 줄씩 띄울 것.
+            5. 해시태그 규칙: "블로그용 해시태그" 같은 설명 문구 없이, 맨 마지막에 쉼표(,) 없이 스페이스바 빈칸으로만 띄어서 딱 10개 나열할 것. (예: #미국증시 #공포탐욕지수 #VIX지수)
+
+            [블로그 포스팅 양식]
+            ### 1. 블로그 보고서 제목 3가지
+            - (검색 SEO에 유리하고 호기심을 끄는 제목 3가지를 하이픈으로 나누어 작성)
+
+            ### 2. 금일 시장 1줄 요약
+            - (시장의 전체적인 흐름과 심리 상태를 1줄 요약)
+
+            ### 3. VIX & CNN 심리 지표 심층 분석
+            - (현재 공포/탐욕 지수 점수와 환율, 금리 등을 종합적으로 분석)
+
+            ### 4. 앤트리치의 액션 플랜 (대응 전략)
+            - (현재 심리 지표를 역발상으로 활용한 구체적인 매매/비중 조절 전략)
+
+            ### 5. 🎨 이미지 AI용 주문서
+            - 이 브리핑 내용에 맞는 블로그 썸네일용 만화 이미지 3개 만들어 줘. 합치지 말고 무조건 1컷당 1개의 이미지 파일로 분리해서 생성해 줘.
+
+            ### 6. 🔥 앤트리치의 찐 속마음 (인간미 코멘트)
+            - (보고서체를 버리고 3040 개미 투자자에게 빙의하여 유머와 한탄을 섞은 친근한 멘트 2~3줄 작성. AI 느낌 100% 제거)
+
+            #미국증시 #나스닥 #S&P500 #공포탐욕지수 #VIX지수 #주식시황 #앤트리치 #실전매매 #가치투자 #시황브리핑
+            """
+            response = model.generate_content(prompt)
+            st.success("✅ 블로그 포스팅 원고 작성 완료!")
+
+            with st.container(border=True):
+                # 파이썬 개행을 HTML 줄바꿈으로 변환하여 예쁘게 출력
+                clean_text = response.text.replace('\n', '<br>')
+                st.markdown(f'<div style="font-size: 18px; line-height: 1.8; padding: 10px; color: #e6edf3;">{clean_text}</div>', unsafe_allow_html=True)
+                
+        except Exception as e:
+            st.error(f"🚨 AI 블로그 작성 중 오류가 발생했습니다: {e}")
