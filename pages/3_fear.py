@@ -111,7 +111,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 # 📈 [중단 2] VIX 오버레이 하이브리드 차트
 # ==========================================
 st.markdown("### 📈 주가 vs 공포지수(VIX) 상관관계 분석")
-st.info("💡 **차트 읽는 법:** 파란색(주가)이 내려가고 오렌지색(VIX)이 치솟을 때가 역사적인 바닥 매수 기회입니다.")
+st.info("💡 **차트 읽는 법:** 파란색(주가)이 내려가고 초록색 형광색 점선(VIX)이 치솟을 때가 역사적인 바닥 매수 기회입니다.")
 
 try:
     # 데이터 로드 (1년치)
@@ -124,8 +124,8 @@ try:
     
     # 주가 (왼쪽 축)
     fig1.add_trace(go.Scatter(x=sp500_data.index, y=sp500_data, name="S&P 500", line=dict(color='#00b0ff', width=2)), secondary_y=False)
-    # VIX (오른쪽 축)
-    fig1.add_trace(go.Scatter(x=vix_data.index, y=vix_data, name="VIX (공포)", line=dict(color='#ffa726', width=1.5, dash='dot'), opacity=0.7), secondary_y=True)
+    # VIX (오른쪽 축) - 💡 초록색 형광색(lime) 및 두께 조절 적용
+    fig1.add_trace(go.Scatter(x=vix_data.index, y=vix_data, name="VIX (공포)", line=dict(color='lime', width=2.5, dash='dot')), secondary_y=True)
     
     # 현재가 표시
     fig1.add_trace(go.Scatter(x=[sp500_data.index[-1]], y=[sp500_data.iloc[-1]], mode='markers+text', text=[f"{sp500_data.iloc[-1]:,.0f}"], textposition="top center", marker=dict(color='#f85149', size=10), showlegend=False), secondary_y=False)
@@ -141,8 +141,8 @@ try:
     
     # 주가 (왼쪽 축)
     fig2.add_trace(go.Scatter(x=nasdaq_data.index, y=nasdaq_data, name="NASDAQ", line=dict(color='#e879f9', width=2)), secondary_y=False)
-    # VIX (오른쪽 축)
-    fig2.add_trace(go.Scatter(x=vix_data.index, y=vix_data, name="VIX (공포)", line=dict(color='#ffa726', width=1.5, dash='dot'), opacity=0.7), secondary_y=True)
+    # VIX (오른쪽 축) - 💡 초록색 형광색(lime) 및 두께 조절 적용
+    fig2.add_trace(go.Scatter(x=vix_data.index, y=vix_data, name="VIX (공포)", line=dict(color='lime', width=2.5, dash='dot')), secondary_y=True)
     
     # 현재가 표시
     fig2.add_trace(go.Scatter(x=[nasdaq_data.index[-1]], y=[nasdaq_data.iloc[-1]], mode='markers+text', text=[f"{nasdaq_data.iloc[-1]:,.0f}"], textposition="top center", marker=dict(color='#f85149', size=10), showlegend=False), secondary_y=False)
