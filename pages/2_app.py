@@ -27,33 +27,36 @@ headers = {
 }
 
 st.set_page_config(page_title="앤트리치 봇", page_icon="🐜", layout="wide")
-st.title("🐜 앤트리치 종목 심층 분석 봇 V4.5 (Pro Edition)")
-st.write("유료 결제 전용 무제한 엔진 탑재! 실시간 검색어가 폭발하는 핫스탁을 발굴하고, 직장 상사에게 보고하는 형태의 각 잡힌 종목 분석 보고서를 즉시 생성합니다.")
+st.title("🐜 앤트리치 종목 심층 분석 봇 V4.6 (Dynamic Volume Edition)")
+st.write("유료 결제 전용 무제한 엔진 탑재! 당일 거래량이 폭발하는 핫스탁을 발굴하고, 직장 상사에게 보고하는 형태의 각 잡힌 종목 분석 보고서를 즉시 생성합니다.")
 st.divider()
 
 # ==========================================
-# ⚡ 데이터 수집 엔진 (빛의 속도 캐싱 적용)
+# ⚡ 데이터 수집 엔진 (검색어 ➡️ 거래량 상위로 엔진 교체)
 # ==========================================
 
 @st.cache_data(ttl=60, show_spinner=False)
-def get_naver_search_ranks_string():
-    url = "https://finance.naver.com/sise/lastsearch2.naver"
+def get_naver_volume_ranks_string():
+    # 💡 검색 순위 대신 매일 다이내믹하게 바뀌는 '거래량 상위' 페이지를 크롤링합니다.
+    url = "https://finance.naver.com/sise/sise_quant.naver"
     rank_text = ""
     try:
         res = requests.get(url, headers=headers)
         soup = BeautifulSoup(res.text, 'html.parser')
-        table = soup.find('table', {'class': 'type_5'})
+        table = soup.find('table', {'class': 'type_2'})
         if table:
             rows = table.find_all('tr')
+            rank_count = 1
             for row in rows:
+                if rank_count > 30: # AI에게 선택지를 주고자 30위까지 넉넉하게 추출
+                    break
                 cols = row.find_all('td')
                 if len(cols) >= 2:
-                    rank_tag = cols[0]
                     name_tag = cols[1].find('a', class_='tltle')
-                    if name_tag and rank_tag.text.strip().isdigit():
-                        rank = int(rank_tag.text.strip())
+                    if name_tag:
                         name = name_tag.text.strip()
-                        rank_text += f"{rank}위: {name}\n"
+                        rank_text += f"거래량 {rank_count}위: {name}\n"
+                        rank_count += 1
     except Exception as e:
         pass
     return rank_text
@@ -120,39 +123,40 @@ def fetch_stock_news(target_stock):
 # ==========================================
 # --- [1단계] 실시간 핫스탁 검색 ---
 # ==========================================
-st.header("🔍 1. 실시간 특징주 동향 파악 (🔥 검색어 랭킹 연동)")
+st.header("🔍 1. 실시간 특징주 동향 파악 (🔥 거래량 폭발 연동)")
 market = st.radio("어떤 시장을 검색할까요?", ["한국 증시", "미국 증시"], horizontal=True)
 
 if st.button("특징주 동향 검색하기", use_container_width=True):
-    with st.spinner("네이버/구글 뉴스 및 실시간 검색 랭킹 데이터를 융합 중입니다... 잠시만 기다려주세요! 🚀"):
+    with st.spinner("네이버/구글 뉴스 및 당일 거래량 데이터를 융합 중입니다... 잠시만 기다려주세요! 🚀"):
         hot_news_titles = fetch_hot_news(market)
         
         search_rank_info = ""
         if "한국" in market:
-            rank_str = get_naver_search_ranks_string()
+            rank_str = get_naver_volume_ranks_string()
             if rank_str:
-                search_rank_info = f"\n[🔥 현재 네이버 실시간 검색 상위 종목]\n{rank_str}\n"
+                search_rank_info = f"\n[🔥 금일 코스피 거래량 폭발 상위 종목 (Top 30)]\n{rank_str}\n"
 
         if not hot_news_titles:
             st.error("🚨 서버 통신 지연. 잠시 후 다시 시도해 주세요!")
         else:
             hot_news_text = "\n".join(hot_news_titles)
 
+            # 💡 [핵심 패치] AI에게 큐레이션 권한 부여 (뻔한 대형주 제외 로직 추가)
             list_prompt = f"""
             당신은 기업의 수석 투자 분석가입니다.
-            다음은 수집된 한국/미국 증시의 최근 뉴스 헤드라인과 실시간 검색어 데이터입니다.
+            다음은 수집된 한국/미국 증시의 최근 뉴스 헤드라인과 당일 거래량 폭발 종목 데이터입니다.
             
             [최근 뉴스 헤드라인]
             {hot_news_text}
             
             {search_rank_info}
             
-            이 뉴스들과 (제공되었다면) 검색어 순위 데이터를 완벽하게 분석하여, 현재 시장에서 가장 이슈가 되고 있는 특징주 5개를 도출하여 직장 상사(팀장/본부장)에게 보고하는 형식으로 간결하게 브리핑해 주세요.
+            이 뉴스들과 (제공되었다면) 거래량 순위 데이터를 완벽하게 분석하여, 현재 시장에서 가장 이슈가 되고 있는 특징주 5개를 도출하여 직장 상사(팀장/본부장)에게 보고하는 형식으로 간결하게 브리핑해 주세요.
 
             [🚨 작성 규칙]
             1. 도입부는 "본부장님(팀장님), 금일 시장 주요 특징주 동향 보고드립니다."로 시작하세요.
-            2. [검색 랭킹 최우선]: 한국 증시의 경우, 제공된 [네이버 실시간 검색 상위 종목]에 포함된 종목을 무조건 1순위로 위로 올려서 1~5위를 정렬하세요. 검색어 순위가 높은 종목이 무조건 상단에 와야 합니다.
-            3. 종목명 옆에 괄호로 검색 순위를 반드시 표기하세요. (예: 삼성전자 (검색 1위) - ... )
+            2. [다양성 및 큐레이션 최우선]: 한국 증시의 경우, 제공된 [거래량 폭발 상위 종목] 30개 중에서 매일 1~5위에 고정되어 있는 뻔한 대형주(KODEX, 삼성전자 등)는 중대한 호재/악재가 없는 한 가급적 제외하세요. 대신 순위가 10~30위권이더라도 오늘 뉴스가 가장 자극적이고 변동성이 큰 '새로운 특징주' 5개를 AI가 직접 선별하여 브리핑하세요.
+            3. 종목명 옆에 괄호로 거래량 순위를 반드시 표기하세요. (예: 한미반도체 (거래량 8위) - ... )
             4. 종목명과 핵심 상승/하락 사유를 개조식(- 함, - 됨)으로 명확히 기재하세요.
             5. 핵심 팩트 및 종목명을 표시할 때 대괄호([ ])나 꺾쇠(【 】) 같은 특수기호로 감싸지 말고 텍스트만 깔끔하게 작성하세요.
             6. 글 전체에 걸쳐 별표(*) 기호와 이모티콘(이모지)은 단 한 개도 절대 사용하지 마세요.
@@ -161,7 +165,7 @@ if st.button("특징주 동향 검색하기", use_container_width=True):
             
             try:
                 list_response = model.generate_content(list_prompt)
-                st.success("✅ 무제한 엔진 가동! 검색 랭킹 기반 시장 동향 요약 완료!")
+                st.success("✅ 무제한 엔진 가동! 거래량 랭킹 기반 시장 동향 요약 완료!")
                 
                 clean_list_text = list_response.text.replace("*", "")
                 clean_list_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_list_text)
@@ -190,7 +194,6 @@ if st.button("종목 분석 보고서 작성 🚀", use_container_width=True):
             else:
                 target_news_text = "\n".join(target_news_titles)
 
-                # 💡 [핵심 패치] 해시태그 작성 규칙을 정규화 (#키워드 포맷 적용, 띄어쓰기 금지)
                 script_prompt = f"""
                 당신은 기업의 수석 투자 분석가이자 콘텐츠 기획자입니다.
                 다음 수집된 '{target_stock}' 관련 최신 뉴스를 바탕으로, 직장 상사(본부장/팀장)에게 보고하는 비즈니스 톤앤매너를 유지하되 지정된 블로그 포스팅 구조에 맞게 문서를 작성해 주세요.
