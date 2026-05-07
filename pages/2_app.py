@@ -27,17 +27,17 @@ headers = {
 }
 
 st.set_page_config(page_title="앤트리치 봇", page_icon="🐜", layout="wide")
-st.title("🐜 앤트리치 종목 심층 분석 봇 V4.6 (Dynamic Volume Edition)")
+st.title("🐜 앤트리치 종목 심층 분석 봇 V4.7 (미장/국장 완벽 분리)")
 st.write("유료 결제 전용 무제한 엔진 탑재! 당일 거래량이 폭발하는 핫스탁을 발굴하고, 직장 상사에게 보고하는 형태의 각 잡힌 종목 분석 보고서를 즉시 생성합니다.")
 st.divider()
 
 # ==========================================
-# ⚡ 데이터 수집 엔진 (검색어 ➡️ 거래량 상위로 엔진 교체)
+# ⚡ 데이터 수집 엔진
 # ==========================================
 
 @st.cache_data(ttl=60, show_spinner=False)
 def get_naver_volume_ranks_string():
-    # 💡 검색 순위 대신 매일 다이내믹하게 바뀌는 '거래량 상위' 페이지를 크롤링합니다.
+    # 💡 한국 증시 전용 거래량 상위 크롤링
     url = "https://finance.naver.com/sise/sise_quant.naver"
     rank_text = ""
     try:
@@ -64,6 +64,7 @@ def get_naver_volume_ranks_string():
 @st.cache_data(ttl=1800, show_spinner=False)
 def fetch_hot_news(market_type):
     hot_news_titles = []
+    # 한국 증시 선택 시에만 네이버 API 작동
     if "한국" in market_type:
         try:
             client_id = st.secrets["NAVER_CLIENT_ID"]
@@ -81,12 +82,13 @@ def fetch_hot_news(market_type):
                     hot_news_titles.append(f"[네이버 속보] {clean_title}")
         except: pass
 
+    # 구글 뉴스 수집 (선택된 시장에 따라 키워드 분리)
     try:
-        search_keyword = "한국 증시 특징주 OR 코스피 특징주 when:1d" if "한국" in market_type else "미국 증시 특징주 OR 서학개미 인기 when:1d"
+        search_keyword = "한국 증시 특징주 OR 코스피 특징주 when:1d" if "한국" in market_type else "미국 증시 특징주 OR 나스닥 급등주 OR 서학개미 인기 when:1d"
         url_google = f"https://news.google.com/rss/search?q={search_keyword}&hl=ko&gl=KR&ceid=KR:ko"
         res_google = requests.get(url_google, headers=headers)
-        soup = BeautifulSoup(res_google.text, "html.parser")
-        for news in soup.find_all("item")[:10]: 
+        soup = BeautifulSoup(res_google.text, "xml") # RSS 처리를 위해 xml 파서 사용 권장
+        for news in soup.find_all("item")[:15]: # 미장은 정보량을 조금 더 늘림
             hot_news_titles.append(f"[구글 뉴스] {news.title.text}")
     except: pass
     return hot_news_titles
@@ -114,7 +116,7 @@ def fetch_stock_news(target_stock):
     try:
         url_target = f"https://news.google.com/rss/search?q={urllib.parse.quote(target_stock)} 주식 when:1d&hl=ko&gl=KR&ceid=KR:ko"
         res_google = requests.get(url_target, headers=headers)
-        soup = BeautifulSoup(res_google.text, "html.parser")
+        soup = BeautifulSoup(res_google.text, "xml")
         for news in soup.find_all("item")[:10]:
             target_news_titles.append(f"[구글] 제목: {news.title.text}")
     except: pass
@@ -127,10 +129,11 @@ st.header("🔍 1. 실시간 특징주 동향 파악 (🔥 거래량 폭발 연�
 market = st.radio("어떤 시장을 검색할까요?", ["한국 증시", "미국 증시"], horizontal=True)
 
 if st.button("특징주 동향 검색하기", use_container_width=True):
-    with st.spinner("네이버/구글 뉴스 및 당일 거래량 데이터를 융합 중입니다... 잠시만 기다려주세요! 🚀"):
+    with st.spinner("뉴스 및 시장 데이터를 융합 중입니다... 잠시만 기다려주세요! 🚀"):
         hot_news_titles = fetch_hot_news(market)
         
         search_rank_info = ""
+        # 💡 [핵심 패치] 한국 증시를 선택했을 때만 네이버 거래량 순위를 추가함!
         if "한국" in market:
             rank_str = get_naver_volume_ranks_string()
             if rank_str:
@@ -141,31 +144,31 @@ if st.button("특징주 동향 검색하기", use_container_width=True):
         else:
             hot_news_text = "\n".join(hot_news_titles)
 
-            # 💡 [핵심 패치] AI에게 큐레이션 권한 부여 (뻔한 대형주 제외 로직 추가)
             list_prompt = f"""
             당신은 기업의 수석 투자 분석가입니다.
-            다음은 수집된 한국/미국 증시의 최근 뉴스 헤드라인과 당일 거래량 폭발 종목 데이터입니다.
+            다음은 수집된 [{market}]의 최근 뉴스 헤드라인과 시장 이슈 데이터입니다.
             
             [최근 뉴스 헤드라인]
             {hot_news_text}
             
             {search_rank_info}
             
-            이 뉴스들과 (제공되었다면) 거래량 순위 데이터를 완벽하게 분석하여, 현재 시장에서 가장 이슈가 되고 있는 특징주 5개를 도출하여 직장 상사(팀장/본부장)에게 보고하는 형식으로 간결하게 브리핑해 주세요.
+            이 데이터들을 완벽하게 분석하여, 현재 시장에서 가장 이슈가 되고 있는 특징주 5개를 도출하여 직장 상사(팀장/본부장)에게 보고하는 형식으로 간결하게 브리핑해 주세요.
 
             [🚨 작성 규칙]
-            1. 도입부는 "본부장님(팀장님), 금일 시장 주요 특징주 동향 보고드립니다."로 시작하세요.
-            2. [다양성 및 큐레이션 최우선]: 한국 증시의 경우, 제공된 [거래량 폭발 상위 종목] 30개 중에서 매일 1~5위에 고정되어 있는 뻔한 대형주(KODEX, 삼성전자 등)는 중대한 호재/악재가 없는 한 가급적 제외하세요. 대신 순위가 10~30위권이더라도 오늘 뉴스가 가장 자극적이고 변동성이 큰 '새로운 특징주' 5개를 AI가 직접 선별하여 브리핑하세요.
-            3. 종목명 옆에 괄호로 거래량 순위를 반드시 표기하세요. (예: 한미반도체 (거래량 8위) - ... )
-            4. 종목명과 핵심 상승/하락 사유를 개조식(- 함, - 됨)으로 명확히 기재하세요.
-            5. 핵심 팩트 및 종목명을 표시할 때 대괄호([ ])나 꺾쇠(【 】) 같은 특수기호로 감싸지 말고 텍스트만 깔끔하게 작성하세요.
-            6. 글 전체에 걸쳐 별표(*) 기호와 이모티콘(이모지)은 단 한 개도 절대 사용하지 마세요.
-            7. [줄바꿈 강제]: 가독성을 위해 본문을 작성할 때 문장이 마침표(.)로 끝나면, 무조건 줄바꿈(엔터)을 하여 다음 내용이 새로운 줄에서 시작되도록 하세요.
+            1. 도입부는 "본부장님(팀장님), 금일 [{market}] 주요 특징주 동향 보고드립니다."로 시작하세요.
+            2. [다양성 및 큐레이션 최우선]: 
+               - 한국 증시의 경우, 제공된 [거래량 폭발 상위 종목] 중에서 뻔한 대형주(KODEX, 삼성전자 등)는 가급적 제외하고, 뉴스가 가장 자극적이고 변동성이 큰 '새로운 특징주' 5개를 선별하세요. 종목명 옆에 괄호로 거래량 순위를 반드시 표기하세요.
+               - 미국 증시의 경우, 뉴스 헤드라인에 등장한 종목들 위주로 테마(AI, 제약, 반도체 등)가 겹치지 않게 핫한 주식 5개를 뽑아 브리핑하세요.
+            3. 종목명과 핵심 상승/하락 사유를 개조식(- 함, - 됨)으로 명확히 기재하세요.
+            4. 핵심 팩트 및 종목명을 표시할 때 대괄호([ ])나 꺾쇠(【 】) 같은 특수기호로 감싸지 말고 텍스트만 깔끔하게 작성하세요.
+            5. 글 전체에 걸쳐 별표(*) 기호와 이모티콘(이모지)은 단 한 개도 절대 사용하지 마세요.
+            6. [줄바꿈 강제]: 가독성을 위해 본문을 작성할 때 문장이 마침표(.)로 끝나면, 무조건 줄바꿈(엔터)을 하여 다음 내용이 새로운 줄에서 시작되도록 하세요.
             """
             
             try:
                 list_response = model.generate_content(list_prompt)
-                st.success("✅ 무제한 엔진 가동! 거래량 랭킹 기반 시장 동향 요약 완료!")
+                st.success(f"✅ 무제한 엔진 가동! [{market}] 동향 요약 완료!")
                 
                 clean_list_text = list_response.text.replace("*", "")
                 clean_list_text = re.sub(r'[\U00010000-\U0010ffff]', '', clean_list_text)
