@@ -1,3 +1,4 @@
+import streamlit as st
 @st.cache_data(ttl=1800, show_spinner=False)
 def fetch_hot_news(market_type):
     hot_news_titles = []
